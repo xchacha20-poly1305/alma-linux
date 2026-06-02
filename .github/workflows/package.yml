@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 2 * * *'  # Daily at 02:00 UTC
   workflow_dispatch:      # Allow manual trigger
+    inputs:
+      release:
+        description: 'Create GitHub Release'
+        type: boolean
+        default: true
+        required: false
 
 permissions:
   contents: write
@@ -122,8 +128,20 @@ jobs:
             "${{ github.event.repository.name }}" \
             "${{ steps.notes.outputs.notes }}"
 
-      - name: Create git tag
+      - name: Upload artifacts
         if: steps.check.outputs.skip != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: alma-linux-packages-${{ steps.version.outputs.version }}
+          path: |
+            dist/*.rpm
+            dist/*.pkg.tar.zst
+            dist/*.deb
+            dist/latest-linux.yml
+          retention-days: 5
+
+      - name: Create git tag
+        if: steps.check.outputs.skip != 'true' && (github.event_name == 'schedule' || inputs.release)
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
@@ -132,7 +150,7 @@ jobs:
           git push origin "v$VERSION"
 
       - name: Create GitHub Release
-        if: steps.check.outputs.skip != 'true'
+        if: steps.check.outputs.skip != 'true' && (github.event_name == 'schedule' || inputs.release)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -161,7 +179,7 @@ jobs:
           - \`alma-system-${VERSION}-1-x86_64.pkg.tar.zst\` - Requires: \`electron${ELECTRON_MAJOR}\`
 
           ### Auto-Update Configuration
-          - \`latest.yml\` - Update manifest pointing to this repository
+          - \`latest-linux.yml\` - Update manifest pointing to this repository
 
           ### Privacy Default
           Packages built by this repository disable Alma's Activity Recorder by default on first run. Users can enable it explicitly with \`alma activity start\` or \`alma activity config set enabled true\`.
@@ -175,7 +193,7 @@ jobs:
             dist/*.rpm \
             dist/*.pkg.tar.zst \
             dist/*.deb \
-            dist/latest.yml \
+            dist/latest-linux.yml \
 
       - name: Summary
         if: steps.check.outputs.skip != 'true'
@@ -185,6 +203,7 @@ jobs:
           echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Electron:** ${{ steps.electron.outputs.electron_major }}" >> $GITHUB_STEP_SUMMARY
           echo "**Release Date:** ${{ steps.version.outputs.release_date }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Released:** ${{ github.event_name == 'schedule' || inputs.release }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Generated Packages" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

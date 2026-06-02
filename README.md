@@ -111,7 +111,7 @@ url: https://updates.alma.now/
 updaterCacheDirName: alma-updater
 ```
 
-**Technical Details**: Alma uses electron-updater 6.6.2, which fully supports GitHub Releases as an update source. The `latest.yml` manifest contains version information, file lists, and SHA512 checksums to ensure secure and reliable updates.
+**Technical Details**: Alma uses electron-updater 6.6.2, which fully supports GitHub Releases as an update source. The `latest-linux.yml` manifest contains version information, file lists, and SHA512 checksums to ensure secure and reliable updates.
 
 ## How It Works
 
@@ -125,7 +125,7 @@ updaterCacheDirName: alma-updater
    - Normalizes file timestamps for reproducible builds
    - Repackages into RPM and Pacman formats using fpm 1.17.0
    - Builds system RPM/Pacman versions (contains only app resources and uses matching system Electron runtime)
-   - Generates `latest.yml` update manifest
+   - Generates `latest-linux.yml` update manifest
 4. **Release** - Creates GitHub Release and uploads all packages and update manifest
 
 ### Reproducible Builds
