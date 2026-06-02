@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Generate latest.yml for auto-update
+# Generate latest-linux.yml for auto-update
 # Usage: ./generate-latest-yml.sh <VERSION> <RELEASE_DATE> <REPO_OWNER> <REPO_NAME> [RELEASE_NOTES]
 
 VERSION="${1:?VERSION required}"
@@ -14,7 +14,7 @@ For full details, visit: https://alma.now}"
 
 BASE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/v${VERSION}"
 
-echo "Generating latest.yml for version $VERSION..."
+echo "Generating latest-linux.yml for version $VERSION..."
 
 # Calculate checksums for all packages (Base64 format for electron-updater)
 calculate_sha512() {
@@ -40,8 +40,8 @@ get_size() {
 # Create output directory
 mkdir -p dist
 
-# Generate latest.yml
-cat > dist/latest.yml << EOF
+# Generate latest-linux.yml
+cat > dist/latest-linux.yml << EOF
 version: ${VERSION}
 releaseDate: '${RELEASE_DATE}'
 files:
@@ -52,7 +52,7 @@ DEB_FILE="dist/alma_${VERSION}-1_amd64.deb"
 if [[ -f "$DEB_FILE" ]]; then
     SHA512=$(calculate_sha512 "$DEB_FILE")
     SIZE=$(get_size "$DEB_FILE")
-    cat >> dist/latest.yml << EOF
+    cat >> dist/latest-linux.yml << EOF
   - url: alma_${VERSION}-1_amd64.deb
     sha512: ${SHA512}
     size: ${SIZE}
@@ -67,7 +67,7 @@ RPM_FILE="dist/alma-${VERSION}-1.x86_64.rpm"
 if [[ -f "$RPM_FILE" ]]; then
     SHA512=$(calculate_sha512 "$RPM_FILE")
     SIZE=$(get_size "$RPM_FILE")
-    cat >> dist/latest.yml << EOF
+    cat >> dist/latest-linux.yml << EOF
   - url: alma-${VERSION}-1.x86_64.rpm
     sha512: ${SHA512}
     size: ${SIZE}
@@ -82,7 +82,7 @@ PACMAN_FILE="dist/alma-${VERSION}-1-x86_64.pkg.tar.zst"
 if [[ -f "$PACMAN_FILE" ]]; then
     SHA512=$(calculate_sha512 "$PACMAN_FILE")
     SIZE=$(get_size "$PACMAN_FILE")
-    cat >> dist/latest.yml << EOF
+    cat >> dist/latest-linux.yml << EOF
   - url: alma-${VERSION}-1-x86_64.pkg.tar.zst
     sha512: ${SHA512}
     size: ${SIZE}
@@ -97,7 +97,7 @@ SYSTEM_RPM_FILE="dist/alma-system-${VERSION}-1.x86_64.rpm"
 if [[ -f "$SYSTEM_RPM_FILE" ]]; then
     SHA512=$(calculate_sha512 "$SYSTEM_RPM_FILE")
     SIZE=$(get_size "$SYSTEM_RPM_FILE")
-    cat >> dist/latest.yml << EOF
+    cat >> dist/latest-linux.yml << EOF
   - url: alma-system-${VERSION}-1.x86_64.rpm
     sha512: ${SHA512}
     size: ${SIZE}
@@ -112,7 +112,7 @@ SYSTEM_PACMAN_FILE="dist/alma-system-${VERSION}-1-x86_64.pkg.tar.zst"
 if [[ -f "$SYSTEM_PACMAN_FILE" ]]; then
     SHA512=$(calculate_sha512 "$SYSTEM_PACMAN_FILE")
     SIZE=$(get_size "$SYSTEM_PACMAN_FILE")
-    cat >> dist/latest.yml << EOF
+    cat >> dist/latest-linux.yml << EOF
   - url: alma-system-${VERSION}-1-x86_64.pkg.tar.zst
     sha512: ${SHA512}
     size: ${SIZE}
@@ -123,7 +123,7 @@ EOF
 fi
 
 # Add path and release notes
-cat >> dist/latest.yml << EOF
+cat >> dist/latest-linux.yml << EOF
 path: alma_${VERSION}-1_amd64.deb
 sha512: $(calculate_sha512 "$DEB_FILE")
 releaseNotes: |
@@ -137,5 +137,5 @@ $(echo "$RELEASE_NOTES" | sed 's/^/  /')
   - For installation instructions, visit: https://github.com/${REPO_OWNER}/${REPO_NAME}
 EOF
 
-echo "✓ Generated: dist/latest.yml"
-cat dist/latest.yml
+echo "✓ Generated: dist/latest-linux.yml"
+cat dist/latest-linux.yml

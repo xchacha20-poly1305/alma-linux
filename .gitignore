@@ -16,3 +16,7 @@ dist/
 # System files
 .DS_Store
 *~
+.alma-snapshots
+
+# asar
+-/
