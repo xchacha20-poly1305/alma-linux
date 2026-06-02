@@ -77,6 +77,17 @@ Check required Electron version:
 # See the latest release description for the required Electron version
 ```
 
+## Privacy Defaults
+
+Packages built by this repository disable Alma's Activity Recorder by default on first run. This prevents new Linux installs from immediately starting periodic screen captures, which can trigger repeated screen-sharing prompts on Wayland/xdg-desktop-portal systems.
+
+Users can still enable the recorder explicitly from Alma, or with:
+
+```bash
+alma activity start
+alma activity config set enabled true
+```
+
 ## Auto-Update
 
 Alma has built-in auto-update functionality powered by [electron-updater](https://github.com/electron-userland/electron-builder). **Packages from this repository are pre-configured to receive updates from this repository**, no manual configuration needed.
@@ -110,6 +121,7 @@ updaterCacheDirName: alma-updater
    - Downloads upstream DEB package
    - Verifies SHA512 checksum
    - Extracts application contents and metadata
+   - Applies repository-maintained patches, including disabling the first-run Activity Recorder default for Linux packages
    - Normalizes file timestamps for reproducible builds
    - Repackages into RPM and Pacman formats using fpm 1.17.0
    - Builds system RPM/Pacman versions (contains only app resources and uses matching system Electron runtime)

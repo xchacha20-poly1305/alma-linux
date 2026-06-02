@@ -163,6 +163,9 @@ jobs:
           ### Auto-Update Configuration
           - \`latest.yml\` - Update manifest pointing to this repository
 
+          ### Privacy Default
+          Packages built by this repository disable Alma's Activity Recorder by default on first run. Users can enable it explicitly with \`alma activity start\` or \`alma activity config set enabled true\`.
+
           For installation instructions, see the [README](https://github.com/${{ github.repository }}).
           EOF
 
@@ -172,7 +175,8 @@ jobs:
             dist/*.rpm \
             dist/*.pkg.tar.zst \
             dist/*.deb \
-            dist/latest.yml
+            dist/latest.yml \
+            --overwrite
 
       - name: Summary
         if: steps.check.outputs.skip != 'true'

@@ -77,6 +77,17 @@ sudo apt-get install -f  # 安装依赖（如果需要）
 # 查看最新 release 的描述，会标明所需的 Electron 版本
 ```
 
+## 隐私默认行为
+
+本仓库构建的 Linux 包会在首次运行时默认禁用 Alma 的 Activity Recorder。这样新安装不会立即开始周期性屏幕截图，避免在 Wayland/xdg-desktop-portal 环境下反复弹出共享屏幕提示。
+
+用户仍然可以在 Alma 中手动开启，或使用：
+
+```bash
+alma activity start
+alma activity config set enabled true
+```
+
 ## 自动更新
 
 Alma 内置了 [electron-updater](https://github.com/electron-userland/electron-builder) 自动更新功能。**本仓库打包的版本已预配置为从本仓库获取更新**，无需手动修改配置。
@@ -110,6 +121,7 @@ updaterCacheDirName: alma-updater
    - 下载上游 DEB 包
    - 验证 SHA512 校验和
    - 提取应用内容和元数据
+   - 应用本仓库维护的补丁，包括将 Linux 包的首次运行 Activity Recorder 默认值设为禁用
    - 标准化文件时间戳以实现可重复构建
    - 使用 fpm 1.17.0 重新打包成 RPM 和 Pacman 格式
    - 构建 system RPM/Pacman 版本（仅包含 app 资源，使用主版本匹配的系统 Electron 运行时）

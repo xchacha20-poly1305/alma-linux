@@ -47,6 +47,8 @@ updaterCacheDirName: alma-updater
 EOF
 fi
 
+./scripts/apply-patches.sh "$BASE_PATH"
+
 # Common metadata
 DESCRIPTION="Elegant AI Provider Orchestration"
 VENDOR="Alma"
