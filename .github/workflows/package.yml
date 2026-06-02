@@ -176,7 +176,6 @@ jobs:
             dist/*.pkg.tar.zst \
             dist/*.deb \
             dist/latest.yml \
-            --overwrite
 
       - name: Summary
         if: steps.check.outputs.skip != 'true'

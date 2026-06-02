@@ -17,24 +17,40 @@ BASE_PATH="extracted/data/$APP_PATH"
 
 # Set SOURCE_DATE_EPOCH for reproducible builds if not already set
 if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
-    SOURCE_DATE_EPOCH=$(date +%s)
-    echo "Warning: SOURCE_DATE_EPOCH not set, using current time: $SOURCE_DATE_EPOCH" >&2
+    if SOURCE_DATE_EPOCH=$(git log -1 --format=%ct 2>/dev/null); then
+        echo "SOURCE_DATE_EPOCH not set, using git HEAD timestamp: $SOURCE_DATE_EPOCH" >&2
+    else
+        SOURCE_DATE_EPOCH=$(date +%s)
+        echo "Warning: SOURCE_DATE_EPOCH not set and git timestamp unavailable, using current time: $SOURCE_DATE_EPOCH" >&2
+    fi
 fi
 export SOURCE_DATE_EPOCH
 
+format_epoch() {
+    date -d "@$SOURCE_DATE_EPOCH" 2>/dev/null || date -r "$SOURCE_DATE_EPOCH" 2>/dev/null
+}
+
+normalize_timestamps() {
+    local path
+    for path in "$@"; do
+        [[ -e "$path" || -L "$path" ]] || continue
+        find "$path" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} + 2>/dev/null || true
+    done
+}
+
+normalize_package() {
+    local package_path="$1"
+    [[ -f "$package_path" ]] || return 0
+    touch -h -d "@${SOURCE_DATE_EPOCH}" "$package_path" 2>/dev/null || true
+}
+
 echo "Building packages for Alma v$VERSION (Electron $ELECTRON_MAJOR)"
 echo "Source: $BASE_PATH"
-echo "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH ($(date -d @$SOURCE_DATE_EPOCH 2>/dev/null || date -r $SOURCE_DATE_EPOCH 2>/dev/null))"
+echo "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH ($(format_epoch))"
 echo ""
 
 # Create dist directory
 mkdir -p dist
-
-# Normalize timestamps for reproducible builds
-echo "Normalizing file timestamps..."
-find extracted/data -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} + 2>/dev/null || true
-echo "  ✓ Timestamps normalized to $(date -d @$SOURCE_DATE_EPOCH 2>/dev/null || date -r $SOURCE_DATE_EPOCH 2>/dev/null)"
-echo ""
 
 # Replace app-update.yml in standalone packages to point to this repository
 echo "Updating app-update.yml for standalone packages..."
@@ -49,12 +65,24 @@ fi
 
 ./scripts/apply-patches.sh "$BASE_PATH"
 
+# Normalize timestamps after all standalone package content changes.
+echo "Normalizing standalone file timestamps..."
+normalize_timestamps extracted/data extracted/DEBIAN
+echo "  ✓ Timestamps normalized to $(format_epoch)"
+echo ""
+
 # Common metadata
 DESCRIPTION="Elegant AI Provider Orchestration"
 VENDOR="Alma"
 MAINTAINER="安容 <HystericalDragons@proton.me>"
 LICENSE="Proprietary"
 URL="https://alma.now"
+
+STANDALONE_RPM="dist/alma-${VERSION}-1.x86_64.rpm"
+STANDALONE_PACMAN="dist/alma-${VERSION}-1-x86_64.pkg.tar.zst"
+STANDALONE_DEB="dist/alma_${VERSION}-1_amd64.deb"
+SYSTEM_RPM="dist/alma-system-${VERSION}-1.x86_64.rpm"
+SYSTEM_PACMAN="dist/alma-system-${VERSION}-1-x86_64.pkg.tar.zst"
 
 # =============================================================================
 # STANDALONE PACKAGES (include full Electron runtime)
@@ -84,7 +112,8 @@ fpm -s dir -t rpm \
     -p "dist/alma-VERSION-ITERATION.ARCH.rpm" \
     .
 
-echo "  ✓ Created: $(ls -1 dist/alma-$VERSION-*.rpm 2>/dev/null | head -1)"
+normalize_package "$STANDALONE_RPM"
+echo "  ✓ Created: $STANDALONE_RPM"
 echo ""
 
 # --- Standalone Pacman ---
@@ -106,7 +135,8 @@ fpm -s dir -t pacman \
     -p "dist/alma-VERSION-ITERATION-ARCH.pkg.tar.zst" \
     .
 
-echo "  ✓ Created: $(ls -1 dist/alma-$VERSION-*.pkg.tar.zst 2>/dev/null | head -1)"
+normalize_package "$STANDALONE_PACMAN"
+echo "  ✓ Created: $STANDALONE_PACMAN"
 echo ""
 
 # --- Standalone DEB ---
@@ -130,7 +160,8 @@ fpm -s dir -t deb \
     -p "dist/alma_VERSION-ITERATION_ARCH.deb" \
     .
 
-echo "  ✓ Created: $(ls -1 dist/alma_$VERSION-*.deb 2>/dev/null | head -1)"
+normalize_package "$STANDALONE_DEB"
+echo "  ✓ Created: $STANDALONE_DEB"
 echo ""
 
 # =============================================================================
@@ -178,9 +209,6 @@ if [[ -f extracted/system-build/usr/share/applications/alma.desktop ]]; then
     sed -i 's|Exec=.*|Exec=/usr/bin/alma %U|g' extracted/system-build/usr/share/applications/alma.desktop
 fi
 
-# Normalize timestamps for system package
-find extracted/system-build -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} + 2>/dev/null || true
-
 # Create system-specific postinst (simplified, no Electron binary handling)
 cat > extracted/system-postinst.sh << 'EOF'
 #!/bin/bash
@@ -197,6 +225,9 @@ fi
 exit 0
 EOF
 chmod +x extracted/system-postinst.sh
+
+# Normalize timestamps after all system package content changes.
+normalize_timestamps extracted/system-build extracted/system-postinst.sh
 
 echo "  ✓ System package content ready"
 echo ""
@@ -222,7 +253,8 @@ fpm -s dir -t rpm \
     -p "dist/alma-system-VERSION-ITERATION.ARCH.rpm" \
     .
 
-echo "  ✓ Created: $(ls -1 dist/alma-system-$VERSION-*.rpm 2>/dev/null | head -1)"
+normalize_package "$SYSTEM_RPM"
+echo "  ✓ Created: $SYSTEM_RPM"
 echo ""
 
 # --- System Pacman ---
@@ -244,7 +276,8 @@ fpm -s dir -t pacman \
     -p "dist/alma-system-VERSION-ITERATION-ARCH.pkg.tar.zst" \
     .
 
-echo "  ✓ Created: $(ls -1 dist/alma-system-$VERSION-*.pkg.tar.zst 2>/dev/null | head -1)"
+normalize_package "$SYSTEM_PACMAN"
+echo "  ✓ Created: $SYSTEM_PACMAN"
 echo ""
 
 # =============================================================================
