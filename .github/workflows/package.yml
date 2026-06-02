@@ -1,0 +1,190 @@
+name: Package Alma Linux
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 02:00 UTC
+  workflow_dispatch:      # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-24.04  # Fixed Ubuntu version
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history for tag checking
+
+      - name: Install dependencies
+        run: |
+          sudo gem install --no-document fpm -v 1.17.0
+          sudo apt-get update
+          sudo apt-get install -y binutils tar xz-utils wget curl libarchive-tools
+
+      - name: Install yq
+        run: |
+          YQ_VERSION=v4.53.2
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Fetch latest version info
+        id: version
+        run: |
+          curl -fsSL https://updates.alma.now/latest-linux.yml -o latest-linux.yml
+
+          VERSION=$(yq .version latest-linux.yml)
+          RELEASE_DATE=$(yq .releaseDate latest-linux.yml)
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "release_date=$RELEASE_DATE" >> $GITHUB_OUTPUT
+
+          # Set SOURCE_DATE_EPOCH for reproducible builds (use release date)
+          SOURCE_DATE_EPOCH=$(date -d "$RELEASE_DATE" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${RELEASE_DATE%%.*}" +%s 2>/dev/null || echo "$(date +%s)")
+          echo "source_date_epoch=$SOURCE_DATE_EPOCH" >> $GITHUB_OUTPUT
+
+          echo "Found Alma version: $VERSION (released $RELEASE_DATE)"
+          echo "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
+
+      - name: Check if version already built
+        id: check
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          if git ls-remote --tags origin | grep -q "refs/tags/v$VERSION$"; then
+            echo "Version v$VERSION already exists, skipping build"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "New version v$VERSION detected, proceeding with build"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download DEB package
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          DEB_URL=$(yq '.files[] | select(.url | test("amd64.deb")) | .url' latest-linux.yml)
+          EXPECTED_SHA512_B64=$(yq '.files[] | select(.url | test("amd64.deb")) | .sha512' latest-linux.yml)
+
+          echo "Downloading: https://updates.alma.now/$DEB_URL"
+          wget -q --show-progress -O alma.deb "https://updates.alma.now/$DEB_URL"
+
+          echo "Verifying checksum..."
+          # Convert Base64 SHA-512 to hex format
+          EXPECTED_SHA512_HEX=$(echo "$EXPECTED_SHA512_B64" | base64 -d | xxd -p -c 256)
+          echo "$EXPECTED_SHA512_HEX  alma.deb" | sha512sum -c -
+
+          echo "✓ DEB package downloaded and verified"
+
+      - name: Extract DEB package
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          chmod +x scripts/extract-deb.sh
+          ./scripts/extract-deb.sh alma.deb
+
+      - name: Determine Electron version
+        if: steps.check.outputs.skip != 'true'
+        id: electron
+        run: |
+          chmod +x scripts/determine-electron.sh
+          ELECTRON_MAJOR=$(./scripts/determine-electron.sh)
+          echo "electron_major=$ELECTRON_MAJOR" >> $GITHUB_OUTPUT
+          echo "Detected Electron major version: $ELECTRON_MAJOR"
+
+      - name: Build all packages
+        if: steps.check.outputs.skip != 'true'
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.version.outputs.source_date_epoch }}
+        run: |
+          chmod +x scripts/build-packages.sh
+          ./scripts/build-packages.sh \
+            "${{ steps.version.outputs.version }}" \
+            "${{ steps.electron.outputs.electron_major }}"
+
+      - name: Extract release notes
+        if: steps.check.outputs.skip != 'true'
+        id: notes
+        run: |
+          NOTES=$(yq .releaseNotes latest-linux.yml)
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Generate latest.yml
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          chmod +x scripts/generate-latest-yml.sh
+          ./scripts/generate-latest-yml.sh \
+            "${{ steps.version.outputs.version }}" \
+            "${{ steps.version.outputs.release_date }}" \
+            "${{ github.repository_owner }}" \
+            "${{ github.event.repository.name }}" \
+            "${{ steps.notes.outputs.notes }}"
+
+      - name: Create git tag
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ELECTRON_MAJOR="${{ steps.electron.outputs.electron_major }}"
+
+          # Create release notes with package information
+          cat > release-notes.md << EOF
+          ${{ steps.notes.outputs.notes }}
+
+          ---
+
+          ## Package Variants
+
+          This release provides **standalone** packages for RPM, DEB, and Pacman formats. **System** packages are provided for RPM and Pacman only.
+
+          ### Standalone Packages
+          Include the full Electron ${ELECTRON_MAJOR} runtime (~300-500 MB):
+          - \`alma-${VERSION}-1.x86_64.rpm\` - For Fedora, RHEL, openSUSE
+          - \`alma_${VERSION}-1_amd64.deb\` - For Debian, Ubuntu
+          - \`alma-${VERSION}-1-x86_64.pkg.tar.zst\` - For Arch Linux, Manjaro
+
+          ### System Packages
+          Require a matching system Electron ${ELECTRON_MAJOR} runtime (~50-100 MB). The launcher rejects Electron executables whose major version does not match.
+          - \`alma-system-${VERSION}-1.x86_64.rpm\` - Requires a compatible distribution-provided Electron runtime
+          - \`alma-system-${VERSION}-1-x86_64.pkg.tar.zst\` - Requires: \`electron${ELECTRON_MAJOR}\`
+
+          ### Auto-Update Configuration
+          - \`latest.yml\` - Update manifest pointing to this repository
+
+          For installation instructions, see the [README](https://github.com/${{ github.repository }}).
+          EOF
+
+          gh release create "v$VERSION" \
+            --title "Alma v$VERSION" \
+            --notes-file release-notes.md \
+            dist/*.rpm \
+            dist/*.pkg.tar.zst \
+            dist/*.deb \
+            dist/latest.yml
+
+      - name: Summary
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Electron:** ${{ steps.electron.outputs.electron_major }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Release Date:** ${{ steps.version.outputs.release_date }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Generated Packages" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|------|" >> $GITHUB_STEP_SUMMARY
+          ls -lh dist/*.{rpm,pkg.tar.zst,deb} 2>/dev/null | awk '{printf "| %s | %s |\n", $9, $5}' >> $GITHUB_STEP_SUMMARY

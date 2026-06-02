@@ -1,0 +1,18 @@
+# Downloaded files
+*.deb
+*.AppImage
+latest-linux.yml
+
+# Extracted content
+extracted/
+
+# Build artifacts
+dist/
+
+# Temporary files
+*.tmp
+*.log
+
+# System files
+.DS_Store
+*~
