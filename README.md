@@ -123,7 +123,7 @@ updaterCacheDirName: alma-updater
    - Extracts application contents and metadata
    - Applies repository-maintained patches, including disabling the first-run Activity Recorder default for Linux packages
    - Normalizes file timestamps for reproducible builds
-   - Repackages into RPM and Pacman formats using fpm 1.17.0
+   - Repackages into RPM and Pacman formats using nFPM 2.46.3
    - Builds system RPM/Pacman versions (contains only app resources and uses matching system Electron runtime)
    - Generates `latest-linux.yml` update manifest
 4. **Release** - Creates GitHub Release and uploads all packages and update manifest
@@ -132,7 +132,7 @@ updaterCacheDirName: alma-updater
 
 This project implements reproducible builds, ensuring identical inputs produce identical outputs:
 
-- **Fixed Tool Versions**: fpm 1.17.0, yq 4.53.2
+- **Fixed Tool Versions**: nFPM 2.46.3, yq 4.53.2
 - **Fixed Build Environment**: Ubuntu 24.04
 - **Normalized Timestamps**: Uses `SOURCE_DATE_EPOCH` environment variable
 - **Deterministic Packaging**: All file timestamps unified to release date
@@ -141,7 +141,7 @@ This allows anyone to verify the integrity of build artifacts, enhancing securit
 
 ## Technology Stack
 
-- **Packaging Tool**: [fpm](https://github.com/jordansissel/fpm)
+- **Packaging Tool**: [nFPM](https://nfpm.goreleaser.com)
 - **CI/CD**: GitHub Actions
 - **Source Format**: DEB (downloaded from upstream)
 
@@ -155,8 +155,10 @@ git clone https://github.com/xchacha20-poly1305/alma-linux.git
 cd alma-linux
 
 # 2. Install dependencies
-sudo gem install --no-document fpm -v 1.17.0
-sudo apt-get install binutils tar xz-utils wget
+echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/sources.list.d/goreleaser.list
+sudo apt update
+sudo apt install nfpm
+sudo apt-get install binutils tar xz-utils wget curl
 
 # 3. Download latest version
 wget https://updates.alma.now/alma-0.0.809-linux-amd64.deb -O alma.deb

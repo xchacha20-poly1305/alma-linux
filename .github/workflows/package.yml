@@ -26,9 +26,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo gem install --no-document fpm -v 1.17.0
+          echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/sources.list.d/goreleaser.list
           sudo apt-get update
-          sudo apt-get install -y binutils tar xz-utils wget curl libarchive-tools
+          sudo apt-get install -y binutils tar xz-utils wget curl libarchive-tools nfpm
+          nfpm --version
 
       - name: Install yq
         run: |

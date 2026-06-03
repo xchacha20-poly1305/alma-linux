@@ -123,7 +123,7 @@ updaterCacheDirName: alma-updater
    - 提取应用内容和元数据
    - 应用本仓库维护的补丁，包括将 Linux 包的首次运行 Activity Recorder 默认值设为禁用
    - 标准化文件时间戳以实现可重复构建
-   - 使用 fpm 1.17.0 重新打包成 RPM 和 Pacman 格式
+   - 使用 nFPM 2.46.3 重新打包成 RPM 和 Pacman 格式
    - 构建 system RPM/Pacman 版本（仅包含 app 资源，使用主版本匹配的系统 Electron 运行时）
    - 生成 `latest-linux.yml` 更新清单
 4. **发布** - 创建 GitHub Release 并上传所有包和更新清单
@@ -132,7 +132,7 @@ updaterCacheDirName: alma-updater
 
 本项目实现了可重复构建（Reproducible Builds），确保相同的输入产生完全相同的输出：
 
-- **固定工具版本**: fpm 1.17.0, yq 4.53.2
+- **固定工具版本**: nFPM 2.46.3, yq 4.53.2
 - **固定构建环境**: Ubuntu 24.04
 - **标准化时间戳**: 使用 `SOURCE_DATE_EPOCH` 环境变量
 - **确定性打包**: 所有文件时间戳统一为发布日期
@@ -141,7 +141,7 @@ updaterCacheDirName: alma-updater
 
 ## 技术栈
 
-- **打包工具**: [fpm](https://github.com/jordansissel/fpm)
+- **打包工具**: [nFPM](https://nfpm.goreleaser.com)
 - **CI/CD**: GitHub Actions
 - **源格式**: DEB (从上游下载)
 
@@ -155,8 +155,10 @@ git clone https://github.com/xchacha20-poly1305/alma-linux.git
 cd alma-linux
 
 # 2. 安装依赖
-sudo gem install --no-document fpm -v 1.17.0
-sudo apt-get install binutils tar xz-utils wget
+echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/sources.list.d/goreleaser.list
+sudo apt update
+sudo apt install nfpm
+sudo apt-get install binutils tar xz-utils wget curl
 
 # 3. 下载最新版本
 wget https://updates.alma.now/alma-0.0.809-linux-amd64.deb -O alma.deb

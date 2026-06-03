@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Build all package variants using fpm
+# Build all package variants using nfpm
 # Usage: ./build-packages.sh <VERSION> <ELECTRON_MAJOR>
 
 VERSION="${1:?VERSION required}"
@@ -30,6 +30,10 @@ format_epoch() {
     date -d "@$SOURCE_DATE_EPOCH" 2>/dev/null || date -r "$SOURCE_DATE_EPOCH" 2>/dev/null
 }
 
+format_epoch_rfc3339() {
+    date -u -d "@$SOURCE_DATE_EPOCH" "+%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -r "$SOURCE_DATE_EPOCH" "+%Y-%m-%dT%H:%M:%SZ" 2>/dev/null
+}
+
 normalize_timestamps() {
     local path
     for path in "$@"; do
@@ -44,9 +48,139 @@ normalize_package() {
     touch -h -d "@${SOURCE_DATE_EPOCH}" "$package_path" 2>/dev/null || true
 }
 
+NFPM_MTIME="$(format_epoch_rfc3339)"
+
+append_script_if_exists() {
+    local config_path="$1"
+    local script_key="$2"
+    local script_path="$3"
+
+    [[ -f "$script_path" ]] || return 0
+    printf '  %s: %s\n' "$script_key" "$script_path" >> "$config_path"
+}
+
+append_scripts_section() {
+    local config_path="$1"
+    shift
+
+    local has_scripts=0
+    local script_path
+    for script_path in "$@"; do
+        if [[ -f "$script_path" ]]; then
+            has_scripts=1
+            break
+        fi
+    done
+
+    [[ "$has_scripts" -eq 1 ]] || return 0
+    echo "scripts:" >> "$config_path"
+}
+
+append_list_item_if_set() {
+    local config_path="$1"
+    local field="$2"
+    local value="$3"
+
+    [[ -n "$value" ]] || return 0
+    {
+        printf '%s:\n' "$field"
+        printf '  - %s\n' "$value"
+    } >> "$config_path"
+}
+
+append_contents() {
+    local config_path="$1"
+    local source_dir="$2"
+
+    local path
+    local base
+    local has_contents=0
+
+    echo "contents:" >> "$config_path"
+    for path in "$source_dir"/* "$source_dir"/.[!.]* "$source_dir"/..?*; do
+        [[ -e "$path" || -L "$path" ]] || continue
+        base=$(basename "$path")
+        has_contents=1
+        printf '  - src: %s\n' "$path" >> "$config_path"
+        printf '    dst: /%s\n' "$base" >> "$config_path"
+        if [[ -d "$path" && ! -L "$path" ]]; then
+            printf '    type: tree\n' >> "$config_path"
+        fi
+    done
+
+    if [[ "$has_contents" -eq 0 ]]; then
+        echo "Error: no package contents found in $source_dir" >&2
+        exit 1
+    fi
+}
+
+write_nfpm_config() {
+    local config_path="$1"
+    local package_name="$2"
+    local arch="$3"
+    local description="$4"
+    local source_dir="$5"
+    local packager="$6"
+    local depends="${7:-}"
+    local conflicts="${8:-}"
+    local rpm_summary="${9:-$description}"
+
+    cat > "$config_path" << EOF
+name: $package_name
+arch: $arch
+platform: linux
+version: $VERSION
+release: "1"
+version_schema: none
+section: utils
+priority: optional
+maintainer: $MAINTAINER
+description: $description
+vendor: $VENDOR
+homepage: $URL
+license: $LICENSE
+mtime: $NFPM_MTIME
+EOF
+
+    append_contents "$config_path" "$source_dir"
+
+    append_list_item_if_set "$config_path" depends "$depends"
+    append_list_item_if_set "$config_path" conflicts "$conflicts"
+
+    if [[ "$packager" == "rpm" ]]; then
+        cat >> "$config_path" << EOF
+rpm:
+  summary: $rpm_summary
+EOF
+    elif [[ "$packager" == "archlinux" ]]; then
+        cat >> "$config_path" << EOF
+archlinux:
+  packager: $MAINTAINER
+EOF
+    elif [[ "$packager" == "deb" ]]; then
+        cat >> "$config_path" << EOF
+deb:
+  compression: xz
+EOF
+    fi
+}
+
+build_nfpm_package() {
+    local config_path="$1"
+    local packager="$2"
+    local target_path="$3"
+
+    nfpm package \
+        --config "$config_path" \
+        --packager "$packager" \
+        --target "$target_path"
+    normalize_package "$target_path"
+}
+
 echo "Building packages for Alma v$VERSION (Electron $ELECTRON_MAJOR)"
 echo "Source: $BASE_PATH"
 echo "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH ($(format_epoch))"
+echo "nFPM mtime: $NFPM_MTIME"
 echo ""
 
 # Create dist directory
@@ -94,74 +228,50 @@ echo ""
 
 # --- Standalone RPM ---
 echo "[1/5] Building standalone RPM..."
-fpm -s dir -t rpm \
-    -n alma \
-    -v "$VERSION" \
-    --iteration 1 \
-    --architecture x86_64 \
-    --description "$DESCRIPTION (standalone with bundled Electron)" \
-    --vendor "$VENDOR" \
-    --maintainer "$MAINTAINER" \
-    --license "$LICENSE" \
-    --url "$URL" \
-    --prefix / \
-    $([ -f extracted/DEBIAN/postinst ] && echo "--after-install extracted/DEBIAN/postinst") \
-    $([ -f extracted/DEBIAN/prerm ] && echo "--before-remove extracted/DEBIAN/prerm") \
-    --rpm-summary "$DESCRIPTION" \
-    --rpm-attr 755,root,root:/opt \
-    -C extracted/data \
-    -p "dist/alma-VERSION-ITERATION.ARCH.rpm" \
-    .
-
-normalize_package "$STANDALONE_RPM"
+write_nfpm_config extracted/nfpm-standalone-rpm.yaml \
+    alma \
+    x86_64 \
+    "$DESCRIPTION (standalone with bundled Electron)" \
+    extracted/data \
+    rpm \
+    "" \
+    "" \
+    "$DESCRIPTION"
+append_scripts_section extracted/nfpm-standalone-rpm.yaml extracted/DEBIAN/postinst extracted/DEBIAN/prerm
+append_script_if_exists extracted/nfpm-standalone-rpm.yaml postinstall extracted/DEBIAN/postinst
+append_script_if_exists extracted/nfpm-standalone-rpm.yaml preremove extracted/DEBIAN/prerm
+build_nfpm_package extracted/nfpm-standalone-rpm.yaml rpm "$STANDALONE_RPM"
 echo "  ✓ Created: $STANDALONE_RPM"
 echo ""
 
 # --- Standalone Pacman ---
 echo "[2/5] Building standalone Pacman..."
-fpm -s dir -t pacman \
-    -n alma \
-    -v "$VERSION" \
-    --iteration 1 \
-    --architecture x86_64 \
-    --description "$DESCRIPTION (standalone with bundled Electron)" \
-    --vendor "$VENDOR" \
-    --maintainer "$MAINTAINER" \
-    --license "$LICENSE" \
-    --url "$URL" \
-    --prefix / \
-    $([ -f extracted/DEBIAN/postinst ] && echo "--after-install extracted/DEBIAN/postinst") \
-    $([ -f extracted/DEBIAN/prerm ] && echo "--before-remove extracted/DEBIAN/prerm") \
-    -C extracted/data \
-    -p "dist/alma-VERSION-ITERATION-ARCH.pkg.tar.zst" \
-    .
-
-normalize_package "$STANDALONE_PACMAN"
+write_nfpm_config extracted/nfpm-standalone-archlinux.yaml \
+    alma \
+    x86_64 \
+    "$DESCRIPTION (standalone with bundled Electron)" \
+    extracted/data \
+    archlinux
+append_scripts_section extracted/nfpm-standalone-archlinux.yaml extracted/DEBIAN/postinst extracted/DEBIAN/prerm
+append_script_if_exists extracted/nfpm-standalone-archlinux.yaml postinstall extracted/DEBIAN/postinst
+append_script_if_exists extracted/nfpm-standalone-archlinux.yaml preremove extracted/DEBIAN/prerm
+build_nfpm_package extracted/nfpm-standalone-archlinux.yaml archlinux "$STANDALONE_PACMAN"
 echo "  ✓ Created: $STANDALONE_PACMAN"
 echo ""
 
 # --- Standalone DEB ---
 echo "[3/5] Building standalone DEB..."
-fpm -s dir -t deb \
-    -n alma \
-    -v "$VERSION" \
-    --iteration 1 \
-    --architecture amd64 \
-    --description "$DESCRIPTION (standalone with bundled Electron)" \
-    --vendor "$VENDOR" \
-    --maintainer "$MAINTAINER" \
-    --license "$LICENSE" \
-    --url "$URL" \
-    --prefix / \
-    $([ -f extracted/DEBIAN/postinst ] && echo "--after-install extracted/DEBIAN/postinst") \
-    $([ -f extracted/DEBIAN/prerm ] && echo "--before-remove extracted/DEBIAN/prerm") \
-    $([ -f extracted/DEBIAN/postrm ] && echo "--after-remove extracted/DEBIAN/postrm") \
-    --deb-priority optional \
-    -C extracted/data \
-    -p "dist/alma_VERSION-ITERATION_ARCH.deb" \
-    .
-
-normalize_package "$STANDALONE_DEB"
+write_nfpm_config extracted/nfpm-standalone-deb.yaml \
+    alma \
+    amd64 \
+    "$DESCRIPTION (standalone with bundled Electron)" \
+    extracted/data \
+    deb
+append_scripts_section extracted/nfpm-standalone-deb.yaml extracted/DEBIAN/postinst extracted/DEBIAN/prerm extracted/DEBIAN/postrm
+append_script_if_exists extracted/nfpm-standalone-deb.yaml postinstall extracted/DEBIAN/postinst
+append_script_if_exists extracted/nfpm-standalone-deb.yaml preremove extracted/DEBIAN/prerm
+append_script_if_exists extracted/nfpm-standalone-deb.yaml postremove extracted/DEBIAN/postrm
+build_nfpm_package extracted/nfpm-standalone-deb.yaml deb "$STANDALONE_DEB"
 echo "  ✓ Created: $STANDALONE_DEB"
 echo ""
 
@@ -235,49 +345,34 @@ echo ""
 
 # --- System RPM ---
 echo "[4/5] Building system RPM..."
-fpm -s dir -t rpm \
-    -n alma-system \
-    -v "$VERSION" \
-    --iteration 1 \
-    --architecture x86_64 \
-    --description "$DESCRIPTION (uses system Electron runtime)" \
-    --vendor "$VENDOR" \
-    --maintainer "$MAINTAINER" \
-    --license "$LICENSE" \
-    --url "$URL" \
-    --conflicts alma \
-    --after-install extracted/system-postinst.sh \
-    --rpm-summary "$DESCRIPTION (system Electron runtime)" \
-    --rpm-attr 755,root,root:/usr/lib/alma \
-    --rpm-attr 755,root,root:/usr/bin/alma \
-    -C extracted/system-build \
-    -p "dist/alma-system-VERSION-ITERATION.ARCH.rpm" \
-    .
-
-normalize_package "$SYSTEM_RPM"
+write_nfpm_config extracted/nfpm-system-rpm.yaml \
+    alma-system \
+    x86_64 \
+    "$DESCRIPTION (uses system Electron runtime)" \
+    extracted/system-build \
+    rpm \
+    "" \
+    alma \
+    "$DESCRIPTION (system Electron runtime)"
+append_scripts_section extracted/nfpm-system-rpm.yaml extracted/system-postinst.sh
+append_script_if_exists extracted/nfpm-system-rpm.yaml postinstall extracted/system-postinst.sh
+build_nfpm_package extracted/nfpm-system-rpm.yaml rpm "$SYSTEM_RPM"
 echo "  ✓ Created: $SYSTEM_RPM"
 echo ""
 
 # --- System Pacman ---
 echo "[5/5] Building system Pacman..."
-fpm -s dir -t pacman \
-    -n alma-system \
-    -v "$VERSION" \
-    --iteration 1 \
-    --architecture x86_64 \
-    --description "$DESCRIPTION (uses system Electron runtime)" \
-    --vendor "$VENDOR" \
-    --maintainer "$MAINTAINER" \
-    --license "$LICENSE" \
-    --url "$URL" \
-    --depends "electron${ELECTRON_MAJOR}>=1.0.0" \
-    --conflicts alma \
-    --after-install extracted/system-postinst.sh \
-    -C extracted/system-build \
-    -p "dist/alma-system-VERSION-ITERATION-ARCH.pkg.tar.zst" \
-    .
-
-normalize_package "$SYSTEM_PACMAN"
+write_nfpm_config extracted/nfpm-system-archlinux.yaml \
+    alma-system \
+    x86_64 \
+    "$DESCRIPTION (uses system Electron runtime)" \
+    extracted/system-build \
+    archlinux \
+    "electron${ELECTRON_MAJOR}>=1.0.0" \
+    alma
+append_scripts_section extracted/nfpm-system-archlinux.yaml extracted/system-postinst.sh
+append_script_if_exists extracted/nfpm-system-archlinux.yaml postinstall extracted/system-postinst.sh
+build_nfpm_package extracted/nfpm-system-archlinux.yaml archlinux "$SYSTEM_PACMAN"
 echo "  ✓ Created: $SYSTEM_PACMAN"
 echo ""
 
