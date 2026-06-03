@@ -60,6 +60,7 @@ provider: github
 owner: xchacha20-poly1305
 repo: alma-linux
 updaterCacheDirName: alma-updater
+url: https://github.com/xchacha20-poly1305/alma-linux/releases/download/
 EOF
 fi
 
