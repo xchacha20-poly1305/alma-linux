@@ -35,16 +35,47 @@ echo "Fixing auto-update detection for system Electron launches..."
 li_before='H(process.resourcesPath,"app-update.yml")'
 li_after='H(q(n.getAppPath()),"app-update.yml")/**/'
 
-# (2) ti() only ever sets autoUpdater.updateConfigPath for the dev config, so a
+# (2) ni()/ti() only ever sets autoUpdater.updateConfigPath for the dev config, so a
 #     packaged system build leaves electron-updater pointing at
 #     process.resourcesPath/app-update.yml (missing) and update checks fail to
 #     load config. Repurpose that no-op-in-production statement to point the
 #     updater at the real config when it exists. 115 bytes -> 115 bytes.
-ti_before='!n.isPackaged&&T(Vr)&&(ei.updateConfigPath=Vr,ei.forceDevUpdateConfig=!0,Kr.info(`Using dev update config: ${Vr}`))'
-ti_after='/*alma-linux*/T(H(q(n.getAppPath()),"app-update.yml"))&&(ei.updateConfigPath=H(q(n.getAppPath()),"app-update.yml"))'
+ti_after_prefix='/*alma-linux*/T(H(q(n.getAppPath()),"app-update.yml"))&&('
+ti_after_suffix='.updateConfigPath=H(q(n.getAppPath()),"app-update.yml"))'
+
+count_ti_before_marker() {
+    LC_ALL=C perl -0ne '
+        my $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
+        my $marker = qr/!n\.isPackaged&&T\(($name)\)&&\(($name)\.updateConfigPath=\1,\2\.forceDevUpdateConfig=!0,($name)\.info\(`Using dev update config: \$\{\1\}`\)\)/;
+        while (/$marker/g) {
+            $count++;
+        }
+        END {
+            print $count || 0;
+        }' \
+        "$APP_ASAR"
+}
+
+count_ti_after_marker() {
+    TI_AFTER_PREFIX="$ti_after_prefix" \
+    TI_AFTER_SUFFIX="$ti_after_suffix" \
+    LC_ALL=C perl -0ne '
+        BEGIN {
+            $prefix = $ENV{TI_AFTER_PREFIX};
+            $suffix = $ENV{TI_AFTER_SUFFIX};
+            $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
+        }
+        while (/\Q$prefix\E$name\Q$suffix\E/g) {
+            $count++;
+        }
+        END {
+            print $count || 0;
+        }' \
+        "$APP_ASAR"
+}
 
 # Check if the patch is already applied
-if grep -aFq "$li_after" "$APP_ASAR" && grep -aFq "$ti_after" "$APP_ASAR"; then
+if grep -aFq "$li_after" "$APP_ASAR" && [[ "$(count_ti_after_marker)" -ne 0 ]]; then
     echo "  ✓ Auto-update patch already applied, skipping"
     exit 0
 fi
@@ -55,7 +86,7 @@ if ! grep -aFq "$li_before" "$APP_ASAR"; then
     echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
     exit 1
 fi
-if ! grep -aFq "$ti_before" "$APP_ASAR"; then
+if [[ "$(count_ti_before_marker)" -eq 0 ]]; then
     echo "Error: could not find updater-config marker in app.asar" >&2
     echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
     exit 1
@@ -63,24 +94,33 @@ fi
 
 LI_BEFORE="$li_before" \
 LI_AFTER="$li_after" \
-TI_BEFORE="$ti_before" \
-TI_AFTER="$ti_after" \
+TI_AFTER_PREFIX="$ti_after_prefix" \
+TI_AFTER_SUFFIX="$ti_after_suffix" \
 LC_ALL=C perl -0pi \
     -e 'BEGIN {
             $li_before = $ENV{LI_BEFORE};
             $li_after = $ENV{LI_AFTER};
-            $ti_before = $ENV{TI_BEFORE};
-            $ti_after = $ENV{TI_AFTER};
+            $ti_after_prefix = $ENV{TI_AFTER_PREFIX};
+            $ti_after_suffix = $ENV{TI_AFTER_SUFFIX};
+            $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
+            $ti_before = qr/!n\.isPackaged&&T\(($name)\)&&\(($name)\.updateConfigPath=\1,\2\.forceDevUpdateConfig=!0,($name)\.info\(`Using dev update config: \$\{\1\}`\)\)/;
         }
         s#\Q$li_before\E#$li_after#g;
-        s#\Q$ti_before\E#$ti_after#g;' \
+        s#$ti_before#
+            my $before = $&;
+            my $updater_var = $2;
+            my $after = $ti_after_prefix . $updater_var . $ti_after_suffix;
+            die "Error: updater-config replacement is not byte-for-byte equal in length\n"
+                if length($after) != length($before);
+            $after;
+        #eg;' \
     "$APP_ASAR"
 
 if grep -aFq "$li_before" "$APP_ASAR"; then
     echo "Error: auto-update support marker was not fully patched" >&2
     exit 1
 fi
-if grep -aFq "$ti_before" "$APP_ASAR"; then
+if [[ "$(count_ti_before_marker)" -ne 0 ]]; then
     echo "Error: updater-config marker was not fully patched" >&2
     exit 1
 fi
@@ -88,7 +128,7 @@ if ! grep -aFq "$li_after" "$APP_ASAR"; then
     echo "Error: patched auto-update support marker missing" >&2
     exit 1
 fi
-if ! grep -aFq "$ti_after" "$APP_ASAR"; then
+if [[ "$(count_ti_after_marker)" -eq 0 ]]; then
     echo "Error: patched updater-config marker missing" >&2
     exit 1
 fi
