@@ -43,6 +43,26 @@ li_after='H(q(n.getAppPath()),"app-update.yml")/**/'
 ti_after_prefix='/*alma-linux*/T(H(q(n.getAppPath()),"app-update.yml"))&&('
 ti_after_suffix='.updateConfigPath=H(q(n.getAppPath()),"app-update.yml"))'
 
+if [[ "${#li_before}" -ne "${#li_after}" ]]; then
+    echo "Error: auto-update support replacement is not byte-for-byte equal in length" >&2
+    exit 1
+fi
+
+count_literal_marker() {
+    local marker="$1"
+
+    LITERAL_MARKER="$marker" \
+    LC_ALL=C perl -0ne '
+        BEGIN {
+            $marker = $ENV{LITERAL_MARKER};
+        }
+        $count += () = /\Q$marker\E/g;
+        END {
+            print $count || 0;
+        }' \
+        "$APP_ASAR"
+}
+
 count_ti_before_marker() {
     LC_ALL=C perl -0ne '
         my $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
@@ -74,23 +94,53 @@ count_ti_after_marker() {
         "$APP_ASAR"
 }
 
+li_before_count="$(count_literal_marker "$li_before")"
+li_after_count="$(count_literal_marker "$li_after")"
+ti_before_count="$(count_ti_before_marker)"
+ti_after_count="$(count_ti_after_marker)"
+
 # Check if the patch is already applied
-if grep -aFq "$li_after" "$APP_ASAR" && [[ "$(count_ti_after_marker)" -ne 0 ]]; then
+if [[ "$li_before_count" -eq 0 ]] &&
+    [[ "$li_after_count" -eq 2 ]] &&
+    [[ "$ti_before_count" -eq 0 ]] &&
+    [[ "$ti_after_count" -eq 1 ]]; then
     echo "  ✓ Auto-update patch already applied, skipping"
     exit 0
 fi
 
 # Check if the original patterns exist
-if ! grep -aFq "$li_before" "$APP_ASAR"; then
-    echo "Error: could not find auto-update support marker in app.asar" >&2
+if [[ "$li_before_count" -ne 2 ]]; then
+    echo "Error: expected 2 auto-update support markers, found $li_before_count" >&2
     echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
     exit 1
 fi
-if [[ "$(count_ti_before_marker)" -eq 0 ]]; then
-    echo "Error: could not find updater-config marker in app.asar" >&2
+if [[ "$li_after_count" -ne 0 ]]; then
+    echo "Error: auto-update support marker appears partially patched" >&2
     echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
     exit 1
 fi
+if [[ "$ti_before_count" -ne 1 ]]; then
+    echo "Error: expected 1 updater-config marker, found $ti_before_count" >&2
+    echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
+    exit 1
+fi
+if [[ "$ti_after_count" -ne 0 ]]; then
+    echo "Error: updater-config marker appears partially patched" >&2
+    echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
+    exit 1
+fi
+
+TI_AFTER_PREFIX="$ti_after_prefix" \
+TI_AFTER_SUFFIX="$ti_after_suffix" \
+LC_ALL=C perl -0ne '
+    my $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
+    my $marker = qr/!n\.isPackaged&&T\(($name)\)&&\(($name)\.updateConfigPath=\1,\2\.forceDevUpdateConfig=!0,($name)\.info\(`Using dev update config: \$\{\1\}`\)\)/;
+    while (/$marker/g) {
+        my $after = $ENV{TI_AFTER_PREFIX} . $2 . $ENV{TI_AFTER_SUFFIX};
+        die "Error: updater-config replacement is not byte-for-byte equal in length\n"
+            if length($after) != length($&);
+    }' \
+    "$APP_ASAR"
 
 LI_BEFORE="$li_before" \
 LI_AFTER="$li_after" \
@@ -110,25 +160,28 @@ LC_ALL=C perl -0pi \
             my $before = $&;
             my $updater_var = $2;
             my $after = $ti_after_prefix . $updater_var . $ti_after_suffix;
-            die "Error: updater-config replacement is not byte-for-byte equal in length\n"
-                if length($after) != length($before);
             $after;
         #eg;' \
     "$APP_ASAR"
 
-if grep -aFq "$li_before" "$APP_ASAR"; then
+li_before_count="$(count_literal_marker "$li_before")"
+li_after_count="$(count_literal_marker "$li_after")"
+ti_before_count="$(count_ti_before_marker)"
+ti_after_count="$(count_ti_after_marker)"
+
+if [[ "$li_before_count" -ne 0 ]]; then
     echo "Error: auto-update support marker was not fully patched" >&2
     exit 1
 fi
-if [[ "$(count_ti_before_marker)" -ne 0 ]]; then
+if [[ "$li_after_count" -ne 2 ]]; then
+    echo "Error: patched auto-update support marker count is $li_after_count, expected 2" >&2
+    exit 1
+fi
+if [[ "$ti_before_count" -ne 0 ]]; then
     echo "Error: updater-config marker was not fully patched" >&2
     exit 1
 fi
-if ! grep -aFq "$li_after" "$APP_ASAR"; then
-    echo "Error: patched auto-update support marker missing" >&2
-    exit 1
-fi
-if [[ "$(count_ti_after_marker)" -eq 0 ]]; then
+if [[ "$ti_after_count" -ne 1 ]]; then
     echo "Error: patched updater-config marker missing" >&2
     exit 1
 fi

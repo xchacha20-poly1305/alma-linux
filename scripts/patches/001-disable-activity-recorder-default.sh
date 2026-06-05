@@ -20,6 +20,27 @@ default_config_after='enabled:!1,outputDir'
 autostart_before='n&&!1===n.enabled||('
 autostart_after='n&&!!n.enabled&&   ('
 
+if [[ "${#default_config_before}" -ne "${#default_config_after}" ]] ||
+    [[ "${#autostart_before}" -ne "${#autostart_after}" ]]; then
+    echo "Error: Activity Recorder replacements are not byte-for-byte equal in length" >&2
+    exit 1
+fi
+
+count_literal_marker() {
+    local marker="$1"
+
+    LITERAL_MARKER="$marker" \
+    LC_ALL=C perl -0ne '
+        BEGIN {
+            $marker = $ENV{LITERAL_MARKER};
+        }
+        $count += () = /\Q$marker\E/g;
+        END {
+            print $count || 0;
+        }' \
+        "$APP_ASAR"
+}
+
 count_autostart_marker() {
     local marker="$1"
 
@@ -38,22 +59,33 @@ count_autostart_marker() {
         "$APP_ASAR"
 }
 
-if ! grep -aFq "$default_config_before" "$APP_ASAR" &&
-    grep -aFq "$default_config_after" "$APP_ASAR" &&
-    [[ "$(count_autostart_marker "$autostart_before")" -eq 0 ]] &&
-    [[ "$(count_autostart_marker "$autostart_after")" -ne 0 ]]; then
+default_config_before_count="$(count_literal_marker "$default_config_before")"
+default_config_after_count="$(count_literal_marker "$default_config_after")"
+autostart_before_count="$(count_autostart_marker "$autostart_before")"
+autostart_after_count="$(count_autostart_marker "$autostart_after")"
+
+if [[ "$default_config_before_count" -eq 0 ]] &&
+    [[ "$default_config_after_count" -eq 1 ]] &&
+    [[ "$autostart_before_count" -eq 0 ]] &&
+    [[ "$autostart_after_count" -eq 1 ]]; then
     echo "  ✓ Activity Recorder patch already applied, skipping"
     exit 0
 fi
 
-if ! grep -aFq "$default_config_before" "$APP_ASAR"; then
-    echo "Error: could not find Activity Recorder default config marker in app.asar" >&2
+if [[ "$default_config_before_count" -ne 1 ]]; then
+    echo "Error: expected 1 Activity Recorder default config marker, found $default_config_before_count" >&2
     exit 1
 fi
-
-autostart_before_count="$(count_autostart_marker "$autostart_before")"
-if [[ "$autostart_before_count" -eq 0 ]]; then
-    echo "Error: could not find Activity Recorder auto-start marker in app.asar" >&2
+if [[ "$default_config_after_count" -ne 0 ]]; then
+    echo "Error: Activity Recorder default config marker appears partially patched" >&2
+    exit 1
+fi
+if [[ "$autostart_before_count" -ne 1 ]]; then
+    echo "Error: expected 1 Activity Recorder auto-start marker, found $autostart_before_count" >&2
+    exit 1
+fi
+if [[ "$autostart_after_count" -ne 0 ]]; then
+    echo "Error: Activity Recorder auto-start marker appears partially patched" >&2
     exit 1
 fi
 
@@ -73,19 +105,24 @@ LC_ALL=C perl -0pi \
         s/($autostart_prefix)\Q$autostart_before\E/$1$autostart_after/g;' \
     "$APP_ASAR"
 
-if grep -aFq "$default_config_before" "$APP_ASAR"; then
+default_config_before_count="$(count_literal_marker "$default_config_before")"
+default_config_after_count="$(count_literal_marker "$default_config_after")"
+autostart_before_count="$(count_autostart_marker "$autostart_before")"
+autostart_after_count="$(count_autostart_marker "$autostart_after")"
+
+if [[ "$default_config_before_count" -ne 0 ]]; then
     echo "Error: Activity Recorder default config marker was not fully patched" >&2
     exit 1
 fi
-if ! grep -aFq "$default_config_after" "$APP_ASAR"; then
+if [[ "$default_config_after_count" -ne 1 ]]; then
     echo "Error: patched Activity Recorder default config marker missing" >&2
     exit 1
 fi
-if [[ "$(count_autostart_marker "$autostart_before")" -ne 0 ]]; then
+if [[ "$autostart_before_count" -ne 0 ]]; then
     echo "Error: Activity Recorder auto-start marker was not fully patched" >&2
     exit 1
 fi
-if [[ "$(count_autostart_marker "$autostart_after")" -eq 0 ]]; then
+if [[ "$autostart_after_count" -ne 1 ]]; then
     echo "Error: patched Activity Recorder auto-start marker missing" >&2
     exit 1
 fi

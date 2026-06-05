@@ -37,6 +37,11 @@ jobs:
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
+      - name: Test repository patches
+        run: |
+          chmod +x scripts/test-patches.sh scripts/patches/*.sh
+          ./scripts/test-patches.sh
+
       - name: Fetch latest version info
         id: version
         run: |
@@ -89,6 +94,12 @@ jobs:
         run: |
           chmod +x scripts/extract-deb.sh
           ./scripts/extract-deb.sh alma.deb
+
+      - name: Patch preflight
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          chmod +x scripts/apply-patches.sh scripts/patches/*.sh
+          ./scripts/apply-patches.sh "extracted/data/$(cat extracted/APP_PATH)"
 
       - name: Determine Electron version
         if: steps.check.outputs.skip != 'true'
