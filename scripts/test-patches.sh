@@ -104,6 +104,7 @@ test_auto_update_patch() {
     app_asar="$app_dir/resources/app.asar"
 
     cat > "$app_asar" <<'EOF'
+import{app as n}from"electron";import p,{dirname as q,join as H}from"path";
 function ni(){if(!ti){const e=Vr("electron-updater");ti=e.autoUpdater,ti.logger={info:Qr.info,warn:Qr.warn,error:Qr.error,debug:Qr.log},!n.isPackaged&&T(Kr)&&(ti.updateConfigPath=Kr,ti.forceDevUpdateConfig=!0,Qr.info(`Using dev update config: ${Kr}`))}return ti}
 function di(){const e=H(process.resourcesPath,"app-update.yml");const t=H(process.resourcesPath,"app-update.yml");return T(e)||T(t)}
 EOF
@@ -119,6 +120,55 @@ EOF
     assert_count "$app_asar" '/*alma-linux*/T(H(q(n.getAppPath()),"app-update.yml"))&&(ti.updateConfigPath=H(q(n.getAppPath()),"app-update.yml"))' 1
 }
 
+test_auto_update_patch_renamed_aliases() {
+    local app_dir
+    local app_asar
+
+    app_dir="$(make_app_dir auto-update-renamed-aliases)"
+    app_asar="$app_dir/resources/app.asar"
+
+    cat > "$app_asar" <<'EOF'
+import{app as n}from"electron";import q,{dirname as H,join as X}from"path";
+function Qr(){if(!Kr){const e=Hr("electron-updater");Kr=e.autoUpdater,Kr.logger={info:Yr.info,warn:Yr.warn,error:Yr.error,debug:Yr.log},!n.isPackaged&&E(Xr)&&(Kr.updateConfigPath=Xr,Kr.forceDevUpdateConfig=!0,Yr.info(`Using dev update config: ${Xr}`))}return Kr}
+function ii(){return Jr.has(process.platform)&&function(){if(n.isPackaged){const e=X(process.resourcesPath,"app-update.yml");return E(e)}return E(Xr)}()}
+function prewarm(){const e=n.isPackaged?X(process.resourcesPath,"app-update.yml"):Xr;return E(e)}
+EOF
+
+    "$PATCH_DIR/002-fix-system-auto-update.sh" "$app_dir" >/dev/null
+    assert_count "$app_asar" 'X(process.resourcesPath,"app-update.yml")' 0
+    assert_count "$app_asar" 'X(H(n.getAppPath()),"app-update.yml")/**/' 2
+    assert_count "$app_asar" '!n.isPackaged&&E(Xr)&&(Kr.updateConfigPath=Xr,Kr.forceDevUpdateConfig=!0,Yr.info(`Using dev update config: ${Xr}`))' 0
+    assert_count "$app_asar" '/*alma-linux*/E(X(H(n.getAppPath()),"app-update.yml"))&&(Kr.updateConfigPath=X(H(n.getAppPath()),"app-update.yml"))' 1
+
+    "$PATCH_DIR/002-fix-system-auto-update.sh" "$app_dir" >/dev/null
+    assert_count "$app_asar" 'X(H(n.getAppPath()),"app-update.yml")/**/' 2
+    assert_count "$app_asar" '/*alma-linux*/E(X(H(n.getAppPath()),"app-update.yml"))&&(Kr.updateConfigPath=X(H(n.getAppPath()),"app-update.yml"))' 1
+}
+
+test_auto_update_patch_symbol_aliases() {
+    local app_dir
+    local app_asar
+
+    app_dir="$(make_app_dir auto-update-symbol-aliases)"
+    app_asar="$app_dir/resources/app.asar"
+
+    cat > "$app_asar" <<'EOF'
+import{app as a}from"electron";import p,{dirname as _,join as $}from"path";
+function uo(){if(!u){const r=R("electron-updater");u=r.autoUpdater,u.logger={info:l.info,warn:l.warn,error:l.error,debug:l.log},!a.isPackaged&&e(c)&&(u.updateConfigPath=c,u.forceDevUpdateConfig=!0,l.info(`Using dev update config: ${c}`))}return u}
+function so(){const r=$(process.resourcesPath,"app-update.yml");const t=$(process.resourcesPath,"app-update.yml");return e(r)||e(t)}
+EOF
+
+    "$PATCH_DIR/002-fix-system-auto-update.sh" "$app_dir" >/dev/null
+    assert_count "$app_asar" '$(process.resourcesPath,"app-update.yml")' 0
+    assert_count "$app_asar" '$(_(a.getAppPath()),"app-update.yml")/**/' 2
+    assert_count "$app_asar" '!a.isPackaged&&e(c)&&(u.updateConfigPath=c,u.forceDevUpdateConfig=!0,l.info(`Using dev update config: ${c}`))' 0
+    assert_count "$app_asar" '/*xxxxx*/e($(_(a.getAppPath()),"app-update.yml"))&&(u.updateConfigPath=$(_(a.getAppPath()),"app-update.yml"))' 1
+
+    "$PATCH_DIR/002-fix-system-auto-update.sh" "$app_dir" >/dev/null
+    assert_count "$app_asar" '$(_(a.getAppPath()),"app-update.yml")/**/' 2
+    assert_count "$app_asar" '/*xxxxx*/e($(_(a.getAppPath()),"app-update.yml"))&&(u.updateConfigPath=$(_(a.getAppPath()),"app-update.yml"))' 1
+}
+
 test_auto_update_duplicate_marker_fails() {
     local app_dir
     local app_asar
@@ -127,6 +177,7 @@ test_auto_update_duplicate_marker_fails() {
     app_asar="$app_dir/resources/app.asar"
 
     cat > "$app_asar" <<'EOF'
+import{app as n}from"electron";import p,{dirname as q,join as H}from"path";
 function ni(){if(!ti){const e=Vr("electron-updater");ti=e.autoUpdater,ti.logger={info:Qr.info,warn:Qr.warn,error:Qr.error,debug:Qr.log},!n.isPackaged&&T(Kr)&&(ti.updateConfigPath=Kr,ti.forceDevUpdateConfig=!0,Qr.info(`Using dev update config: ${Kr}`))}return ti}
 function di(){const e=H(process.resourcesPath,"app-update.yml");const t=H(process.resourcesPath,"app-update.yml");const o=H(process.resourcesPath,"app-update.yml");return T(e)||T(t)||T(o)}
 EOF
@@ -138,6 +189,8 @@ EOF
 test_activity_recorder_patch
 test_activity_recorder_duplicate_marker_fails
 test_auto_update_patch
+test_auto_update_patch_renamed_aliases
+test_auto_update_patch_symbol_aliases
 test_auto_update_duplicate_marker_fails
 
 echo "Patch fixture tests passed"

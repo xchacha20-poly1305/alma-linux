@@ -26,37 +26,74 @@ fi
 echo "Fixing auto-update detection for system Electron launches..."
 
 # Keep replacements byte-for-byte equal in length so the asar header and file
-# offsets remain valid. Repacking would lose unpacked-file metadata.
-# H = path.join, q = path.dirname, n = electron app, T = fs.existsSync.
+# offsets remain valid. Repacking would lose unpacked-file metadata. Alma's
+# minifier regularly renames import aliases, so discover those aliases from the
+# current bundle instead of pinning a single release's variable names.
 
-# (1) Support check li() and the macOS pre-warm helper both resolve the config
-#     from process.resourcesPath. Swap that for dirname(app.getAppPath()).
-#     41 bytes -> 41 bytes (padded with an empty /**/ comment).
-li_before='H(process.resourcesPath,"app-update.yml")'
-li_after='H(q(n.getAppPath()),"app-update.yml")/**/'
+detect_app_var() {
+    LC_ALL=C perl -0ne '
+        my $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
+        while (/import\{([^}]*)\}from"electron"/g) {
+            my $named = $1;
+            if ($named =~ /(?:^|,)\s*app as ($name)(?:,|$)/) {
+                print $1;
+                exit;
+            }
+        }' \
+        "$APP_ASAR"
+}
 
-# (2) ni()/ti() only ever sets autoUpdater.updateConfigPath for the dev config, so a
-#     packaged system build leaves electron-updater pointing at
-#     process.resourcesPath/app-update.yml (missing) and update checks fail to
-#     load config. Repurpose that no-op-in-production statement to point the
-#     updater at the real config when it exists. 115 bytes -> 115 bytes.
-ti_after_prefix='/*alma-linux*/T(H(q(n.getAppPath()),"app-update.yml"))&&('
-ti_after_suffix='.updateConfigPath=H(q(n.getAppPath()),"app-update.yml"))'
+list_support_join_vars() {
+    LC_ALL=C perl -0ne '
+        my $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
+        while (/($name)\(process\.resourcesPath,"app-update\.yml"\)/g) {
+            $seen{$1} = 1;
+        }
+        END {
+            print "$_\n" for sort keys %seen;
+        }' \
+        "$APP_ASAR"
+}
 
-if [[ "${#li_before}" -ne "${#li_after}" ]]; then
-    echo "Error: auto-update support replacement is not byte-for-byte equal in length" >&2
-    exit 1
-fi
+detect_dirname_var() {
+    local join_var="$1"
 
-count_literal_marker() {
-    local marker="$1"
-
-    LITERAL_MARKER="$marker" \
+    JOIN_VAR="$join_var" \
     LC_ALL=C perl -0ne '
         BEGIN {
-            $marker = $ENV{LITERAL_MARKER};
+            $join = $ENV{JOIN_VAR};
         }
-        $count += () = /\Q$marker\E/g;
+        my $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
+        while (/import[^;]*\{([^}]*)\}from"(?:node:)?path"/g) {
+            my $named = $1;
+            next unless $named =~ /(?:^|,)\s*join as \Q$join\E(?:,|$)/;
+            if ($named =~ /(?:^|,)\s*dirname as ($name)(?:,|$)/) {
+                print $1;
+                exit;
+            }
+        }' \
+        "$APP_ASAR"
+}
+
+count_support_before_marker() {
+    LC_ALL=C perl -0ne '
+        my $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
+        while (/$name\(process\.resourcesPath,"app-update\.yml"\)/g) {
+            $count++;
+        }
+        END {
+            print $count || 0;
+        }' \
+        "$APP_ASAR"
+}
+
+count_support_after_marker() {
+    LC_ALL=C perl -0ne '
+        my $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
+        my $patched = qr/$name\($name\($name\.getAppPath\(\)\),"app-update\.yml"\)(?:\/\*\*\/|[ ]+)/;
+        while (/$patched/g) {
+            $count++;
+        }
         END {
             print $count || 0;
         }' \
@@ -64,9 +101,15 @@ count_literal_marker() {
 }
 
 count_ti_before_marker() {
+    local app_var="$1"
+
+    APP_VAR="$app_var" \
     LC_ALL=C perl -0ne '
+        BEGIN {
+            $app = quotemeta($ENV{APP_VAR});
+        }
         my $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
-        my $marker = qr/!n\.isPackaged&&T\(($name)\)&&\(($name)\.updateConfigPath=\1,\2\.forceDevUpdateConfig=!0,($name)\.info\(`Using dev update config: \$\{\1\}`\)\)/;
+        my $marker = qr/!$app\.isPackaged&&($name)\(($name)\)&&\(($name)\.updateConfigPath=\2,\3\.forceDevUpdateConfig=!0,($name)\.info\(`Using dev update config: \$\{\2\}`\)\)/;
         while (/$marker/g) {
             $count++;
         }
@@ -77,15 +120,11 @@ count_ti_before_marker() {
 }
 
 count_ti_after_marker() {
-    TI_AFTER_PREFIX="$ti_after_prefix" \
-    TI_AFTER_SUFFIX="$ti_after_suffix" \
     LC_ALL=C perl -0ne '
-        BEGIN {
-            $prefix = $ENV{TI_AFTER_PREFIX};
-            $suffix = $ENV{TI_AFTER_SUFFIX};
-            $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
-        }
-        while (/\Q$prefix\E$name\Q$suffix\E/g) {
+        my $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
+        my $path = qr/$name\($name\($name\.getAppPath\(\)\),"app-update\.yml"\)/;
+        my $prefix = qr/(?:\/\*[^*]*\*\/[ ]*|[ ]*)/;
+        while (/$prefix$name\($path\)&&\($name\.updateConfigPath=$path\)/g) {
             $count++;
         }
         END {
@@ -94,9 +133,13 @@ count_ti_after_marker() {
         "$APP_ASAR"
 }
 
-li_before_count="$(count_literal_marker "$li_before")"
-li_after_count="$(count_literal_marker "$li_after")"
-ti_before_count="$(count_ti_before_marker)"
+app_var="$(detect_app_var)"
+li_before_count="$(count_support_before_marker)"
+li_after_count="$(count_support_after_marker)"
+ti_before_count="0"
+if [[ -n "$app_var" ]]; then
+    ti_before_count="$(count_ti_before_marker "$app_var")"
+fi
 ti_after_count="$(count_ti_after_marker)"
 
 # Check if the patch is already applied
@@ -119,6 +162,11 @@ if [[ "$li_after_count" -ne 0 ]]; then
     echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
     exit 1
 fi
+if [[ -z "$app_var" ]]; then
+    echo "Error: could not detect Electron app alias for auto-update patch" >&2
+    echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
+    exit 1
+fi
 if [[ "$ti_before_count" -ne 1 ]]; then
     echo "Error: expected 1 updater-config marker, found $ti_before_count" >&2
     echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
@@ -130,43 +178,118 @@ if [[ "$ti_after_count" -ne 0 ]]; then
     exit 1
 fi
 
-TI_AFTER_PREFIX="$ti_after_prefix" \
-TI_AFTER_SUFFIX="$ti_after_suffix" \
+mapfile -t support_join_vars < <(list_support_join_vars)
+if [[ "${#support_join_vars[@]}" -ne 1 ]]; then
+    echo "Error: expected 1 auto-update path.join alias, found ${#support_join_vars[@]}" >&2
+    echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
+    exit 1
+fi
+
+join_var="${support_join_vars[0]}"
+dirname_var="$(detect_dirname_var "$join_var")"
+if [[ -z "$dirname_var" ]]; then
+    echo "Error: could not detect path.dirname alias for auto-update patch" >&2
+    echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
+    exit 1
+fi
+
+APP_VAR="$app_var" \
+JOIN_VAR="$join_var" \
+DIRNAME_VAR="$dirname_var" \
 LC_ALL=C perl -0ne '
+    BEGIN {
+        $app = $ENV{APP_VAR};
+        $join = $ENV{JOIN_VAR};
+        $dirname = $ENV{DIRNAME_VAR};
+    }
+
+    sub support_padding {
+        my ($bytes) = @_;
+        die "Error: auto-update support replacement is longer than the original marker\n"
+            if $bytes < 1;
+        return "/**/" if $bytes == 4;
+        return " " x $bytes;
+    }
+
+    sub prefix_padding {
+        my ($bytes) = @_;
+        die "Error: updater-config replacement is longer than the original marker\n"
+            if $bytes < 0;
+        return "" if $bytes == 0;
+        return " " x $bytes if $bytes < 4;
+        return "/*alma-linux*/" . (" " x ($bytes - 14)) if $bytes >= 14;
+        return "/*" . ("x" x ($bytes - 4)) . "*/";
+    }
+
     my $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
-    my $marker = qr/!n\.isPackaged&&T\(($name)\)&&\(($name)\.updateConfigPath=\1,\2\.forceDevUpdateConfig=!0,($name)\.info\(`Using dev update config: \$\{\1\}`\)\)/;
+    my $support = qr/\Q$join\E\(process\.resourcesPath,"app-update\.yml"\)/;
+    while (/$support/g) {
+        my $after = $join . "(" . $dirname . "(" . $app . ".getAppPath()),\"app-update.yml\")";
+        $after .= support_padding(length($&) - length($after));
+        die "Error: auto-update support replacement is not byte-for-byte equal in length\n"
+            if length($after) != length($&);
+    }
+
+    my $app_pattern = quotemeta($app);
+    my $marker = qr/!$app_pattern\.isPackaged&&($name)\(($name)\)&&\(($name)\.updateConfigPath=\2,\3\.forceDevUpdateConfig=!0,($name)\.info\(`Using dev update config: \$\{\2\}`\)\)/;
     while (/$marker/g) {
-        my $after = $ENV{TI_AFTER_PREFIX} . $2 . $ENV{TI_AFTER_SUFFIX};
+        my $exists_var = $1;
+        my $updater_var = $3;
+        my $path = $join . "(" . $dirname . "(" . $app . ".getAppPath()),\"app-update.yml\")";
+        my $tail = $exists_var . "(" . $path . ")&&(" . $updater_var . ".updateConfigPath=" . $path . ")";
+        my $after = prefix_padding(length($&) - length($tail)) . $tail;
         die "Error: updater-config replacement is not byte-for-byte equal in length\n"
             if length($after) != length($&);
     }' \
     "$APP_ASAR"
 
-LI_BEFORE="$li_before" \
-LI_AFTER="$li_after" \
-TI_AFTER_PREFIX="$ti_after_prefix" \
-TI_AFTER_SUFFIX="$ti_after_suffix" \
+APP_VAR="$app_var" \
+JOIN_VAR="$join_var" \
+DIRNAME_VAR="$dirname_var" \
 LC_ALL=C perl -0pi \
     -e 'BEGIN {
-            $li_before = $ENV{LI_BEFORE};
-            $li_after = $ENV{LI_AFTER};
-            $ti_after_prefix = $ENV{TI_AFTER_PREFIX};
-            $ti_after_suffix = $ENV{TI_AFTER_SUFFIX};
+            $app = $ENV{APP_VAR};
+            $join = $ENV{JOIN_VAR};
+            $dirname = $ENV{DIRNAME_VAR};
             $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
-            $ti_before = qr/!n\.isPackaged&&T\(($name)\)&&\(($name)\.updateConfigPath=\1,\2\.forceDevUpdateConfig=!0,($name)\.info\(`Using dev update config: \$\{\1\}`\)\)/;
+            $support_before = qr/\Q$join\E\(process\.resourcesPath,"app-update\.yml"\)/;
+            $app_pattern = quotemeta($app);
+            $ti_before = qr/!$app_pattern\.isPackaged&&($name)\(($name)\)&&\(($name)\.updateConfigPath=\2,\3\.forceDevUpdateConfig=!0,($name)\.info\(`Using dev update config: \$\{\2\}`\)\)/;
         }
-        s#\Q$li_before\E#$li_after#g;
+        sub support_padding {
+            my ($bytes) = @_;
+            die "Error: auto-update support replacement is longer than the original marker\n"
+                if $bytes < 1;
+            return "/**/" if $bytes == 4;
+            return " " x $bytes;
+        }
+        sub prefix_padding {
+            my ($bytes) = @_;
+            die "Error: updater-config replacement is longer than the original marker\n"
+                if $bytes < 0;
+            return "" if $bytes == 0;
+            return " " x $bytes if $bytes < 4;
+            return "/*alma-linux*/" . (" " x ($bytes - 14)) if $bytes >= 14;
+            return "/*" . ("x" x ($bytes - 4)) . "*/";
+        }
+        s#$support_before#
+            my $after = $join . "(" . $dirname . "(" . $app . ".getAppPath()),\"app-update.yml\")";
+            $after .= support_padding(length($&) - length($after));
+            $after;
+        #eg;
         s#$ti_before#
-            my $before = $&;
-            my $updater_var = $2;
-            my $after = $ti_after_prefix . $updater_var . $ti_after_suffix;
+            my $exists_var = $1;
+            my $updater_var = $3;
+            my $path = $join . "(" . $dirname . "(" . $app . ".getAppPath()),\"app-update.yml\")";
+            my $tail = $exists_var . "(" . $path . ")&&(" . $updater_var . ".updateConfigPath=" . $path . ")";
+            my $after = prefix_padding(length($&) - length($tail)) . $tail;
             $after;
         #eg;' \
     "$APP_ASAR"
 
-li_before_count="$(count_literal_marker "$li_before")"
-li_after_count="$(count_literal_marker "$li_after")"
-ti_before_count="$(count_ti_before_marker)"
+li_before_count="$(count_support_before_marker)"
+li_after_count="$(count_support_after_marker)"
+ti_before_count="$(count_ti_before_marker "$app_var")"
 ti_after_count="$(count_ti_after_marker)"
 
 if [[ "$li_before_count" -ne 0 ]]; then
