@@ -131,6 +131,8 @@ jobs:
 
       - name: Generate latest.yml
         if: steps.check.outputs.skip != 'true'
+        env:
+          NOTES: ${{ steps.notes.outputs.notes }}
         run: |
           chmod +x scripts/generate-latest-yml.sh
           ./scripts/generate-latest-yml.sh \
@@ -138,7 +140,7 @@ jobs:
             "${{ steps.version.outputs.release_date }}" \
             "${{ github.repository_owner }}" \
             "${{ github.event.repository.name }}" \
-            "${{ steps.notes.outputs.notes }}"
+            "$NOTES"
 
       - name: Upload artifacts
         if: steps.check.outputs.skip != 'true'
@@ -165,13 +167,14 @@ jobs:
         if: steps.check.outputs.skip != 'true' && (github.event_name == 'schedule' || inputs.release)
         env:
           GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ steps.notes.outputs.notes }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           ELECTRON_MAJOR="${{ steps.electron.outputs.electron_major }}"
 
           # Create release notes with package information
           cat > release-notes.md << EOF
-          ${{ steps.notes.outputs.notes }}
+          $NOTES
 
           ---
 
