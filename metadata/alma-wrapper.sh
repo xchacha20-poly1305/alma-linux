@@ -2,7 +2,9 @@
 set -euo pipefail
 
 APP_ASAR="/usr/lib/alma/resources/app.asar"
+APPDIR="/usr/lib/alma/resources"
 ELECTRON_MAJOR="@ELECTRON_MAJOR@"
+export APPDIR
 
 commands=()
 checked_commands=()

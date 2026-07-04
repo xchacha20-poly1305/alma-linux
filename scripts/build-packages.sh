@@ -48,6 +48,14 @@ normalize_package() {
     touch -h -d "@${SOURCE_DATE_EPOCH}" "$package_path" 2>/dev/null || true
 }
 
+set_package_type() {
+    local resources_dir="$1"
+    local package_type="$2"
+
+    printf '%s\n' "$package_type" > "$resources_dir/package-type"
+    normalize_package "$resources_dir/package-type"
+}
+
 prepare_app_builder_candidate() {
     local candidate="$1"
 
@@ -280,6 +288,7 @@ echo ""
 
 # --- Standalone RPM ---
 echo "[1/5] Building standalone RPM..."
+set_package_type "$BASE_PATH/resources" rpm
 write_nfpm_config extracted/nfpm-standalone-rpm.yaml \
     alma \
     x86_64 \
@@ -298,6 +307,7 @@ echo ""
 
 # --- Standalone Pacman ---
 echo "[2/5] Building standalone Pacman..."
+set_package_type "$BASE_PATH/resources" pacman
 write_nfpm_config extracted/nfpm-standalone-archlinux.yaml \
     alma \
     x86_64 \
@@ -313,6 +323,7 @@ echo ""
 
 # --- Standalone DEB ---
 echo "[3/5] Building standalone DEB..."
+set_package_type "$BASE_PATH/resources" deb
 write_nfpm_config extracted/nfpm-standalone-deb.yaml \
     alma \
     amd64 \
@@ -397,6 +408,7 @@ echo ""
 
 # --- System RPM ---
 echo "[4/5] Building system RPM..."
+set_package_type extracted/system-build/usr/lib/alma/resources rpm
 write_nfpm_config extracted/nfpm-system-rpm.yaml \
     alma-system \
     x86_64 \
@@ -414,6 +426,7 @@ echo ""
 
 # --- System Pacman ---
 echo "[5/5] Building system Pacman..."
+set_package_type extracted/system-build/usr/lib/alma/resources pacman
 write_nfpm_config extracted/nfpm-system-archlinux.yaml \
     alma-system \
     x86_64 \

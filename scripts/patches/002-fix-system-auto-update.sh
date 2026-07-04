@@ -8,12 +8,20 @@ set -euo pipefail
 # never finds app-update.yml and the About screen shows:
 #   "Auto-update is only available for distribution builds."
 #
+# electron-updater also uses process.resourcesPath/package-type to decide
+# whether Linux should use the AppImage, deb, rpm, or pacman updater. Without a
+# readable package-type file it falls back to AppImageUpdater, and check-for-
+# updates reports:
+#   "[auto-update] APPIMAGE env is not defined, current application is not an AppImage"
+#
 # Fix: resolve the config from path.dirname(app.getAppPath()) instead of
 # process.resourcesPath. getAppPath() returns the app.asar path for both layouts:
 #   standalone -> /opt/Alma/resources/app.asar      -> dir /opt/Alma/resources
 #   system     -> /usr/lib/alma/resources/app.asar  -> dir /usr/lib/alma/resources
 # which is exactly where build-packages.sh writes app-update.yml. The standalone
-# package is unaffected (same directory as resourcesPath there).
+# package is unaffected (same directory as resourcesPath there). For
+# package-type, teach electron-updater to prefer APPDIR when the system wrapper
+# provides it and fall back to process.resourcesPath for standalone packages.
 
 BASE_PATH="${1:?app base path required}"
 APP_ASAR="$BASE_PATH/resources/app.asar"
@@ -133,6 +141,28 @@ count_ti_after_marker() {
         "$APP_ASAR"
 }
 
+count_package_type_before_marker() {
+    LC_ALL=C perl -0ne '
+        while (/path\.join\(process\.resourcesPath,\s*"package-type"\)/g) {
+            $count++;
+        }
+        END {
+            print $count || 0;
+        }' \
+        "$APP_ASAR"
+}
+
+count_package_type_after_marker() {
+    LC_ALL=C perl -0ne '
+        while (/path\.join\(process\.env\.APPDIR\|\|process\.resourcesPath,\s*"package-type"\)/g) {
+            $count++;
+        }
+        END {
+            print $count || 0;
+        }' \
+        "$APP_ASAR"
+}
+
 app_var="$(detect_app_var)"
 li_before_count="$(count_support_before_marker)"
 li_after_count="$(count_support_after_marker)"
@@ -141,12 +171,16 @@ if [[ -n "$app_var" ]]; then
     ti_before_count="$(count_ti_before_marker "$app_var")"
 fi
 ti_after_count="$(count_ti_after_marker)"
+package_type_before_count="$(count_package_type_before_marker)"
+package_type_after_count="$(count_package_type_after_marker)"
 
 # Check if the patch is already applied
 if [[ "$li_before_count" -eq 0 ]] &&
     [[ "$li_after_count" -eq 2 ]] &&
     [[ "$ti_before_count" -eq 0 ]] &&
-    [[ "$ti_after_count" -eq 1 ]]; then
+    [[ "$ti_after_count" -eq 1 ]] &&
+    [[ "$package_type_before_count" -eq 0 ]] &&
+    [[ "$package_type_after_count" -eq 1 ]]; then
     echo "  ✓ Auto-update patch already applied, skipping"
     exit 0
 fi
@@ -174,6 +208,16 @@ if [[ "$ti_before_count" -ne 1 ]]; then
 fi
 if [[ "$ti_after_count" -ne 0 ]]; then
     echo "Error: updater-config marker appears partially patched" >&2
+    echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
+    exit 1
+fi
+if [[ "$package_type_before_count" -ne 1 ]]; then
+    echo "Error: expected 1 package-type marker, found $package_type_before_count" >&2
+    echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
+    exit 1
+fi
+if [[ "$package_type_after_count" -ne 0 ]]; then
+    echo "Error: package-type marker appears partially patched" >&2
     echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
     exit 1
 fi
@@ -287,10 +331,38 @@ LC_ALL=C perl -0pi \
         #eg;' \
     "$APP_ASAR"
 
+LC_ALL=C perl -0pi \
+    -e 'BEGIN {
+            $log_before = "Checking for beta autoupdate feature for deb/rpm distributions";
+            $log_base = "Checking Linux package type for updater now";
+        }
+        $original_length = length($_);
+        @matches = /path\.join\(process\.resourcesPath,\s*"package-type"\)/g;
+        next unless @matches;
+        die "Error: expected 1 package-type replacement in matching chunk, found " . scalar(@matches) . "\n"
+            unless @matches == 1;
+        $before = $matches[0];
+        $after = "path.join(process.env.APPDIR||process.resourcesPath,\"package-type\")";
+        $delta = length($after) - length($before);
+        die "Error: package-type replacement is not longer than expected\n" if $delta <= 0;
+        die "Error: package-type log marker missing\n" unless /\Q$log_before\E/;
+        die "Error: package-type log marker is too short for equal-length replacement\n"
+            if length($log_before) <= $delta;
+        $log_after = substr($log_base, 0, length($log_before) - $delta);
+        die "Error: package-type replacement log is too short\n"
+            if length($log_after) != length($log_before) - $delta;
+        s/\Q$log_before\E/$log_after/;
+        s/\Q$before\E/$after/;
+        die "Error: package-type replacement changed app.asar length\n"
+            unless length($_) == $original_length;' \
+    "$APP_ASAR"
+
 li_before_count="$(count_support_before_marker)"
 li_after_count="$(count_support_after_marker)"
 ti_before_count="$(count_ti_before_marker "$app_var")"
 ti_after_count="$(count_ti_after_marker)"
+package_type_before_count="$(count_package_type_before_marker)"
+package_type_after_count="$(count_package_type_after_marker)"
 
 if [[ "$li_before_count" -ne 0 ]]; then
     echo "Error: auto-update support marker was not fully patched" >&2
@@ -308,5 +380,13 @@ if [[ "$ti_after_count" -ne 1 ]]; then
     echo "Error: patched updater-config marker missing" >&2
     exit 1
 fi
+if [[ "$package_type_before_count" -ne 0 ]]; then
+    echo "Error: package-type marker was not fully patched" >&2
+    exit 1
+fi
+if [[ "$package_type_after_count" -ne 1 ]]; then
+    echo "Error: patched package-type marker missing" >&2
+    exit 1
+fi
 
-echo "  ✓ Auto-update now resolves app-update.yml from the app directory"
+echo "  ✓ Auto-update now resolves app-update.yml and package-type from the app directory"
