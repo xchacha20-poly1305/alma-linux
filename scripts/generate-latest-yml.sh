@@ -37,6 +37,42 @@ get_size() {
     fi
 }
 
+add_package_file() {
+    local file="$1"
+    local variant="$2"
+    local format="$3"
+    local arch="$4"
+    local blockmap_file="${file}.blockmap"
+
+    if [[ ! -f "$file" ]]; then
+        return 0
+    fi
+
+    if [[ ! -f "$blockmap_file" ]]; then
+        echo "Error: Missing blockmap for $file: $blockmap_file" >&2
+        return 1
+    fi
+
+    local url
+    local sha512
+    local size
+    local blockmap_size
+    url=$(basename "$file")
+    sha512=$(calculate_sha512 "$file")
+    size=$(get_size "$file")
+    blockmap_size=$(get_size "$blockmap_file")
+
+    cat >> dist/latest-linux.yml << EOF
+  - url: ${url}
+    sha512: ${sha512}
+    size: ${size}
+    blockMapSize: ${blockmap_size}
+    variant: ${variant}
+    format: ${format}
+    arch: ${arch}
+EOF
+}
+
 # Create output directory
 mkdir -p dist
 
@@ -47,80 +83,17 @@ releaseDate: '${RELEASE_DATE}'
 files:
 EOF
 
-# Add standalone DEB
 DEB_FILE="dist/alma_${VERSION}-1_amd64.deb"
-if [[ -f "$DEB_FILE" ]]; then
-    SHA512=$(calculate_sha512 "$DEB_FILE")
-    SIZE=$(get_size "$DEB_FILE")
-    cat >> dist/latest-linux.yml << EOF
-  - url: alma_${VERSION}-1_amd64.deb
-    sha512: ${SHA512}
-    size: ${SIZE}
-    variant: standalone
-    format: deb
-    arch: amd64
-EOF
-fi
-
-# Add standalone RPM
 RPM_FILE="dist/alma-${VERSION}-1.x86_64.rpm"
-if [[ -f "$RPM_FILE" ]]; then
-    SHA512=$(calculate_sha512 "$RPM_FILE")
-    SIZE=$(get_size "$RPM_FILE")
-    cat >> dist/latest-linux.yml << EOF
-  - url: alma-${VERSION}-1.x86_64.rpm
-    sha512: ${SHA512}
-    size: ${SIZE}
-    variant: standalone
-    format: rpm
-    arch: x86_64
-EOF
-fi
-
-# Add standalone Pacman
 PACMAN_FILE="dist/alma-${VERSION}-1-x86_64.pkg.tar.zst"
-if [[ -f "$PACMAN_FILE" ]]; then
-    SHA512=$(calculate_sha512 "$PACMAN_FILE")
-    SIZE=$(get_size "$PACMAN_FILE")
-    cat >> dist/latest-linux.yml << EOF
-  - url: alma-${VERSION}-1-x86_64.pkg.tar.zst
-    sha512: ${SHA512}
-    size: ${SIZE}
-    variant: standalone
-    format: pacman
-    arch: x86_64
-EOF
-fi
-
-# Add system RPM
 SYSTEM_RPM_FILE="dist/alma-system-${VERSION}-1.x86_64.rpm"
-if [[ -f "$SYSTEM_RPM_FILE" ]]; then
-    SHA512=$(calculate_sha512 "$SYSTEM_RPM_FILE")
-    SIZE=$(get_size "$SYSTEM_RPM_FILE")
-    cat >> dist/latest-linux.yml << EOF
-  - url: alma-system-${VERSION}-1.x86_64.rpm
-    sha512: ${SHA512}
-    size: ${SIZE}
-    variant: system
-    format: rpm
-    arch: x86_64
-EOF
-fi
-
-# Add system Pacman
 SYSTEM_PACMAN_FILE="dist/alma-system-${VERSION}-1-x86_64.pkg.tar.zst"
-if [[ -f "$SYSTEM_PACMAN_FILE" ]]; then
-    SHA512=$(calculate_sha512 "$SYSTEM_PACMAN_FILE")
-    SIZE=$(get_size "$SYSTEM_PACMAN_FILE")
-    cat >> dist/latest-linux.yml << EOF
-  - url: alma-system-${VERSION}-1-x86_64.pkg.tar.zst
-    sha512: ${SHA512}
-    size: ${SIZE}
-    variant: system
-    format: pacman
-    arch: x86_64
-EOF
-fi
+
+add_package_file "$DEB_FILE" standalone deb amd64
+add_package_file "$RPM_FILE" standalone rpm x86_64
+add_package_file "$PACMAN_FILE" standalone pacman x86_64
+add_package_file "$SYSTEM_RPM_FILE" system rpm x86_64
+add_package_file "$SYSTEM_PACMAN_FILE" system pacman x86_64
 
 # Add path and release notes
 cat >> dist/latest-linux.yml << EOF

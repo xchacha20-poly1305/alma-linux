@@ -29,6 +29,10 @@ jobs:
           echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/sources.list.d/goreleaser.list
           sudo apt-get update
           sudo apt-get install -y binutils tar xz-utils wget curl libarchive-tools nfpm
+          npm install --prefix "$RUNNER_TEMP/app-builder-bin" app-builder-bin@4.2.0
+          APP_BUILDER_PATH=$(node -p "require('$RUNNER_TEMP/app-builder-bin/node_modules/app-builder-bin').appBuilderPath")
+          chmod +x "$APP_BUILDER_PATH"
+          echo "APP_BUILDER_PATH=$APP_BUILDER_PATH" >> "$GITHUB_ENV"
           nfpm --version
 
       - name: Install yq
@@ -151,6 +155,7 @@ jobs:
             dist/*.rpm
             dist/*.pkg.tar.zst
             dist/*.deb
+            dist/*.blockmap
             dist/latest-linux.yml
           retention-days: 5
 
@@ -195,6 +200,7 @@ jobs:
 
           ### Auto-Update Configuration
           - \`latest-linux.yml\` - Update manifest pointing to this repository
+          - \`*.blockmap\` - Differential update metadata for each published package file
 
           ### Privacy Default
           Packages built by this repository disable Alma's Activity Recorder by default on first run. Users can enable it explicitly with \`alma activity start\` or \`alma activity config set enabled true\`.
@@ -208,7 +214,8 @@ jobs:
             dist/*.rpm \
             dist/*.pkg.tar.zst \
             dist/*.deb \
-            dist/latest-linux.yml \
+            dist/*.blockmap \
+            dist/latest-linux.yml
 
       - name: Summary
         if: steps.check.outputs.skip != 'true'
@@ -225,3 +232,9 @@ jobs:
           echo "| Package | Size |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|------|" >> $GITHUB_STEP_SUMMARY
           ls -lh dist/*.{rpm,pkg.tar.zst,deb} 2>/dev/null | awk '{printf "| %s | %s |\n", $9, $5}' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Generated Blockmaps" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Blockmap | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
+          ls -lh dist/*.blockmap 2>/dev/null | awk '{printf "| %s | %s |\n", $9, $5}' >> $GITHUB_STEP_SUMMARY

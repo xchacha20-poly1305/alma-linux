@@ -48,6 +48,57 @@ normalize_package() {
     touch -h -d "@${SOURCE_DATE_EPOCH}" "$package_path" 2>/dev/null || true
 }
 
+prepare_app_builder_candidate() {
+    local candidate="$1"
+
+    [[ -f "$candidate" ]] || return 1
+    if [[ ! -x "$candidate" ]]; then
+        chmod +x "$candidate" 2>/dev/null || return 1
+    fi
+    echo "$candidate"
+}
+
+resolve_app_builder() {
+    local candidate
+    local npm_root
+
+    if [[ -n "${APP_BUILDER_PATH:-}" ]] && prepare_app_builder_candidate "$APP_BUILDER_PATH"; then
+        return 0
+    fi
+
+    if command -v node >/dev/null 2>&1; then
+        if candidate=$(node -p 'require("app-builder-bin").appBuilderPath' 2>/dev/null) && prepare_app_builder_candidate "$candidate"; then
+            return 0
+        fi
+
+        if command -v npm >/dev/null 2>&1; then
+            npm_root=$(npm root -g 2>/dev/null || true)
+            if [[ -n "$npm_root" ]] && candidate=$(NODE_PATH="$npm_root" node -p 'require("app-builder-bin").appBuilderPath' 2>/dev/null) && prepare_app_builder_candidate "$candidate"; then
+                return 0
+            fi
+        fi
+    fi
+
+    if command -v app-builder >/dev/null 2>&1; then
+        command -v app-builder
+        return 0
+    fi
+
+    echo "Error: app-builder not found. Install app-builder-bin or set APP_BUILDER_PATH." >&2
+    return 1
+}
+
+generate_blockmap() {
+    local package_path="$1"
+    local blockmap_path="${package_path}.blockmap"
+
+    APP_BUILDER_PATH=$(resolve_app_builder)
+    "$APP_BUILDER_PATH" blockmap \
+        --input "$package_path" \
+        --output "$blockmap_path" >/dev/null
+    normalize_package "$blockmap_path"
+}
+
 NFPM_MTIME="$(format_epoch_rfc3339)"
 
 append_script_if_exists() {
@@ -175,6 +226,7 @@ build_nfpm_package() {
         --packager "$packager" \
         --target "$target_path"
     normalize_package "$target_path"
+    generate_blockmap "$target_path"
 }
 
 echo "Building packages for Alma v$VERSION (Electron $ELECTRON_MAJOR)"
@@ -391,3 +443,4 @@ echo "System packages (use system Electron $ELECTRON_MAJOR):"
 ls -lh dist/alma-system-$VERSION-*.rpm dist/alma-system-$VERSION-*.pkg.tar.zst 2>/dev/null | awk '{print "  " $9, "(" $5 ")"}'
 echo ""
 echo "Total packages: $(ls -1 dist/*.{rpm,pkg.tar.zst,deb} 2>/dev/null | wc -l)"
+echo "Total blockmaps: $(ls -1 dist/*.blockmap 2>/dev/null | wc -l)"

@@ -111,7 +111,7 @@ url: https://updates.alma.now/
 updaterCacheDirName: alma-updater
 ```
 
-**Technical Details**: Alma uses electron-updater 6.6.2, which fully supports GitHub Releases as an update source. The `latest-linux.yml` manifest contains version information, file lists, and SHA512 checksums to ensure secure and reliable updates.
+**Technical Details**: Alma uses electron-updater 6.6.2, which fully supports GitHub Releases as an update source. The `latest-linux.yml` manifest contains version information, file lists, SHA512 checksums, and blockmap sizes to ensure secure and reliable updates. Each published package has a matching `.blockmap` asset for differential update metadata.
 
 ## How It Works
 
@@ -125,8 +125,9 @@ updaterCacheDirName: alma-updater
    - Normalizes file timestamps for reproducible builds
    - Repackages into RPM and Pacman formats using nFPM 2.46.3
    - Builds system RPM/Pacman versions (contains only app resources and uses matching system Electron runtime)
+   - Generates `.blockmap` files for every release package
    - Generates `latest-linux.yml` update manifest
-4. **Release** - Creates GitHub Release and uploads all packages and update manifest
+4. **Release** - Creates GitHub Release and uploads all packages, blockmaps, and update manifest
 
 ### Reproducible Builds
 
@@ -159,6 +160,7 @@ echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/
 sudo apt update
 sudo apt install nfpm
 sudo apt-get install binutils tar xz-utils wget curl
+npm install -g app-builder-bin@4.2.0
 
 # 3. Download latest version
 wget https://updates.alma.now/alma-0.0.809-linux-amd64.deb -O alma.deb

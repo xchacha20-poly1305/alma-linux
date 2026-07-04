@@ -111,7 +111,7 @@ url: https://updates.alma.now/
 updaterCacheDirName: alma-updater
 ```
 
-**技术说明**：Alma 使用 electron-updater 6.6.2，完全支持 GitHub Releases 作为更新源。`latest-linux.yml` 包含版本信息、文件列表和 SHA512 校验和，确保更新安全可靠。
+**技术说明**：Alma 使用 electron-updater 6.6.2，完全支持 GitHub Releases 作为更新源。`latest-linux.yml` 包含版本信息、文件列表、SHA512 校验和以及 blockmap 大小，确保更新安全可靠。每个发布包都会有一个对应的 `.blockmap` 资产用于差分更新元数据。
 
 ## 工作原理
 
@@ -125,8 +125,9 @@ updaterCacheDirName: alma-updater
    - 标准化文件时间戳以实现可重复构建
    - 使用 nFPM 2.46.3 重新打包成 RPM 和 Pacman 格式
    - 构建 system RPM/Pacman 版本（仅包含 app 资源，使用主版本匹配的系统 Electron 运行时）
+   - 为每个发布包生成 `.blockmap` 文件
    - 生成 `latest-linux.yml` 更新清单
-4. **发布** - 创建 GitHub Release 并上传所有包和更新清单
+4. **发布** - 创建 GitHub Release 并上传所有包、blockmap 和更新清单
 
 ### 可重复构建
 
@@ -159,6 +160,7 @@ echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/
 sudo apt update
 sudo apt install nfpm
 sudo apt-get install binutils tar xz-utils wget curl
+npm install -g app-builder-bin@4.2.0
 
 # 3. 下载最新版本
 wget https://updates.alma.now/alma-0.0.809-linux-amd64.deb -O alma.deb
