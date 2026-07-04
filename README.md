@@ -123,7 +123,7 @@ updaterCacheDirName: alma-updater
    - Extracts application contents and metadata
    - Applies repository-maintained patches, including disabling the first-run Activity Recorder default for Linux packages
    - Normalizes file timestamps for reproducible builds
-   - Repackages into RPM and Pacman formats using nFPM 2.46.3
+   - Repackages into RPM and Pacman formats using nFPM 2.47.0
    - Builds system RPM/Pacman versions (contains only app resources and uses matching system Electron runtime)
    - Generates `.blockmap` files for every release package
    - Generates `latest-linux.yml` update manifest
@@ -133,7 +133,7 @@ updaterCacheDirName: alma-updater
 
 This project implements reproducible builds, ensuring identical inputs produce identical outputs:
 
-- **Fixed Tool Versions**: nFPM 2.46.3, yq 4.53.2
+- **Fixed Tool Versions**: nFPM 2.47.0, yq 4.53.3
 - **Fixed Build Environment**: Ubuntu 24.04
 - **Normalized Timestamps**: Uses `SOURCE_DATE_EPOCH` environment variable
 - **Deterministic Packaging**: All file timestamps unified to release date
