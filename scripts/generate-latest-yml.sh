@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Generate latest-linux.yml for auto-update
+# Generate latest-linux.yml and system-linux.yml for auto-update
 # Usage: ./generate-latest-yml.sh <VERSION> <RELEASE_DATE> <REPO_OWNER> <REPO_NAME> [RELEASE_NOTES]
 
 VERSION="${1:?VERSION required}"
@@ -14,7 +14,7 @@ For full details, visit: https://alma.now}"
 
 BASE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/v${VERSION}"
 
-echo "Generating latest-linux.yml for version $VERSION..."
+echo "Generating update manifests for version $VERSION..."
 
 # Calculate checksums for all packages (Base64 format for electron-updater)
 calculate_sha512() {
@@ -38,6 +38,8 @@ get_size() {
 }
 
 add_package_file() {
+    local output_file="$1"
+    shift
     local file="$1"
     local variant="$2"
     local format="$3"
@@ -62,7 +64,7 @@ add_package_file() {
     size=$(get_size "$file")
     blockmap_size=$(get_size "$blockmap_file")
 
-    cat >> dist/latest-linux.yml << EOF
+    cat >> "$output_file" << EOF
   - url: ${url}
     sha512: ${sha512}
     size: ${size}
@@ -73,15 +75,37 @@ add_package_file() {
 EOF
 }
 
-# Create output directory
-mkdir -p dist
+write_manifest_header() {
+    local output_file="$1"
 
-# Generate latest-linux.yml
-cat > dist/latest-linux.yml << EOF
+    cat > "$output_file" << EOF
 version: ${VERSION}
 releaseDate: '${RELEASE_DATE}'
 files:
 EOF
+}
+
+write_manifest_footer() {
+    local output_file="$1"
+    local default_file="$2"
+    local package_info="$3"
+
+    cat >> "$output_file" << EOF
+path: $(basename "$default_file")
+sha512: $(calculate_sha512 "$default_file")
+releaseNotes: |
+$(echo "$RELEASE_NOTES" | sed 's/^/  /')
+
+  ---
+
+  **Package Information:**
+${package_info}
+  - For installation instructions, visit: https://github.com/${REPO_OWNER}/${REPO_NAME}
+EOF
+}
+
+# Create output directory
+mkdir -p dist
 
 DEB_FILE="dist/alma_${VERSION}-1_amd64.deb"
 RPM_FILE="dist/alma-${VERSION}-1.x86_64.rpm"
@@ -89,26 +113,23 @@ PACMAN_FILE="dist/alma-${VERSION}-1-x86_64.pkg.tar.zst"
 SYSTEM_RPM_FILE="dist/alma-system-${VERSION}-1.x86_64.rpm"
 SYSTEM_PACMAN_FILE="dist/alma-system-${VERSION}-1-x86_64.pkg.tar.zst"
 
-add_package_file "$DEB_FILE" standalone deb amd64
-add_package_file "$RPM_FILE" standalone rpm x86_64
-add_package_file "$PACMAN_FILE" standalone pacman x86_64
-add_package_file "$SYSTEM_RPM_FILE" system rpm x86_64
-add_package_file "$SYSTEM_PACMAN_FILE" system pacman x86_64
-
-# Add path and release notes
-cat >> dist/latest-linux.yml << EOF
-path: alma_${VERSION}-1_amd64.deb
-sha512: $(calculate_sha512 "$DEB_FILE")
-releaseNotes: |
-$(echo "$RELEASE_NOTES" | sed 's/^/  /')
-
-  ---
-
-  **Package Information:**
-  - Standalone packages include the full Electron runtime
+write_manifest_header dist/latest-linux.yml
+add_package_file dist/latest-linux.yml "$DEB_FILE" standalone deb amd64
+add_package_file dist/latest-linux.yml "$RPM_FILE" standalone rpm x86_64
+add_package_file dist/latest-linux.yml "$PACMAN_FILE" standalone pacman x86_64
+add_package_file dist/latest-linux.yml "$SYSTEM_RPM_FILE" system rpm x86_64
+add_package_file dist/latest-linux.yml "$SYSTEM_PACMAN_FILE" system pacman x86_64
+write_manifest_footer dist/latest-linux.yml "$DEB_FILE" "  - Standalone packages include the full Electron runtime
   - System RPM/Pacman packages require a matching system Electron runtime
-  - For installation instructions, visit: https://github.com/${REPO_OWNER}/${REPO_NAME}
-EOF
+  - System packages use the separate system-linux.yml update channel"
+
+write_manifest_header dist/system-linux.yml
+add_package_file dist/system-linux.yml "$SYSTEM_RPM_FILE" system rpm x86_64
+add_package_file dist/system-linux.yml "$SYSTEM_PACMAN_FILE" system pacman x86_64
+write_manifest_footer dist/system-linux.yml "$SYSTEM_RPM_FILE" "  - System RPM/Pacman packages require a matching system Electron runtime
+  - This manifest is used only by packages with channel: system"
 
 echo "✓ Generated: dist/latest-linux.yml"
 cat dist/latest-linux.yml
+echo "✓ Generated: dist/system-linux.yml"
+cat dist/system-linux.yml

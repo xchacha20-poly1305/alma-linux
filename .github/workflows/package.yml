@@ -157,6 +157,7 @@ jobs:
             dist/*.deb
             dist/*.blockmap
             dist/latest-linux.yml
+            dist/system-linux.yml
           retention-days: 5
 
       - name: Create git tag
@@ -199,7 +200,8 @@ jobs:
           - \`alma-system-${VERSION}-1-x86_64.pkg.tar.zst\` - Requires: \`electron${ELECTRON_MAJOR}\`
 
           ### Auto-Update Configuration
-          - \`latest-linux.yml\` - Update manifest pointing to this repository
+          - \`latest-linux.yml\` - Standalone/default update manifest pointing to this repository
+          - \`system-linux.yml\` - System-package update manifest used by packages with \`channel: system\`
           - \`*.blockmap\` - Differential update metadata for each published package file
 
           ### Privacy Default
@@ -215,7 +217,8 @@ jobs:
             dist/*.pkg.tar.zst \
             dist/*.deb \
             dist/*.blockmap \
-            dist/latest-linux.yml
+            dist/latest-linux.yml \
+            dist/system-linux.yml
 
       - name: Summary
         if: steps.check.outputs.skip != 'true'

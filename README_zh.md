@@ -100,6 +100,8 @@ owner: xchacha20-poly1305
 repo: alma-linux
 ```
 
+System 包还会设置 `channel: system`，因此 electron-updater 会读取 `system-linux.yml` 并下载 `alma-system-*` RPM/Pacman 更新，而不是 standalone 包。
+
 如需切换回官方更新源，可手动修改配置文件：
 - **Standalone 版本**：`/opt/Alma/resources/app-update.yml`
 - **System 版本**：`/usr/lib/alma/resources/app-update.yml`
@@ -111,7 +113,7 @@ url: https://updates.alma.now/
 updaterCacheDirName: alma-updater
 ```
 
-**技术说明**：Alma 使用 electron-updater 6.6.2，完全支持 GitHub Releases 作为更新源。`latest-linux.yml` 包含版本信息、文件列表、SHA512 校验和以及 blockmap 大小，确保更新安全可靠。每个发布包都会有一个对应的 `.blockmap` 资产用于差分更新元数据。
+**技术说明**：Alma 使用 electron-updater 6.6.2，完全支持 GitHub Releases 作为更新源。`latest-linux.yml` 和 `system-linux.yml` 包含版本信息、文件列表、SHA512 校验和以及 blockmap 大小，确保更新安全可靠。每个发布包都会有一个对应的 `.blockmap` 资产用于差分更新元数据。
 
 ## 工作原理
 
@@ -126,7 +128,7 @@ updaterCacheDirName: alma-updater
    - 使用 nFPM 2.47.0 重新打包成 RPM 和 Pacman 格式
    - 构建 system RPM/Pacman 版本（仅包含 app 资源，使用主版本匹配的系统 Electron 运行时）
    - 为每个发布包生成 `.blockmap` 文件
-   - 生成 `latest-linux.yml` 更新清单
+   - 生成 `latest-linux.yml` 和 `system-linux.yml` 更新清单
 4. **发布** - 创建 GitHub Release 并上传所有包、blockmap 和更新清单
 
 ### 可重复构建

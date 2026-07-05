@@ -362,6 +362,7 @@ cat > extracted/system-build/usr/lib/alma/resources/app-update.yml << 'EOF'
 provider: github
 owner: xchacha20-poly1305
 repo: alma-linux
+channel: system
 updaterCacheDirName: alma-updater
 EOF
 

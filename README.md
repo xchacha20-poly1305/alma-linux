@@ -100,6 +100,8 @@ owner: xchacha20-poly1305
 repo: alma-linux
 ```
 
+System packages also set `channel: system`, so electron-updater reads `system-linux.yml` and downloads `alma-system-*` RPM/Pacman updates instead of the standalone packages.
+
 To switch back to the official update source, manually edit the configuration file:
 - **Standalone version**: `/opt/Alma/resources/app-update.yml`
 - **System version**: `/usr/lib/alma/resources/app-update.yml`
@@ -111,7 +113,7 @@ url: https://updates.alma.now/
 updaterCacheDirName: alma-updater
 ```
 
-**Technical Details**: Alma uses electron-updater 6.6.2, which fully supports GitHub Releases as an update source. The `latest-linux.yml` manifest contains version information, file lists, SHA512 checksums, and blockmap sizes to ensure secure and reliable updates. Each published package has a matching `.blockmap` asset for differential update metadata.
+**Technical Details**: Alma uses electron-updater 6.6.2, which fully supports GitHub Releases as an update source. The `latest-linux.yml` and `system-linux.yml` manifests contain version information, file lists, SHA512 checksums, and blockmap sizes to ensure secure and reliable updates. Each published package has a matching `.blockmap` asset for differential update metadata.
 
 ## How It Works
 
@@ -126,8 +128,8 @@ updaterCacheDirName: alma-updater
    - Repackages into RPM and Pacman formats using nFPM 2.47.0
    - Builds system RPM/Pacman versions (contains only app resources and uses matching system Electron runtime)
    - Generates `.blockmap` files for every release package
-   - Generates `latest-linux.yml` update manifest
-4. **Release** - Creates GitHub Release and uploads all packages, blockmaps, and update manifest
+   - Generates `latest-linux.yml` and `system-linux.yml` update manifests
+4. **Release** - Creates GitHub Release and uploads all packages, blockmaps, and update manifests
 
 ### Reproducible Builds
 
