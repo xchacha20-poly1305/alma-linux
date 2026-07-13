@@ -163,16 +163,37 @@ count_package_type_after_marker() {
         "$APP_ASAR"
 }
 
+collect_marker_counts() {
+    local app_var="$1"
+
+    APP_VAR="$app_var" \
+    LC_ALL=C perl -0ne '
+        BEGIN {
+            $app = quotemeta($ENV{APP_VAR});
+            $name = qr/[A-Za-z_\$][A-Za-z0-9_\$]*/;
+            $support_after = qr/$name\($name\($name\.getAppPath\(\)\),"app-update\.yml"\)(?:\/\*\*\/|[ ]+)/;
+        }
+        $support_before += () = /$name\(process\.resourcesPath,"app-update\.yml"\)/g;
+        $support_after_count += () = /$support_after/g;
+        $package_type_before += () = /path\.join\(process\.resourcesPath,\s*"package-type"\)/g;
+        $package_type_after += () = /path\.join\(process\.env\.APPDIR\|\|process\.resourcesPath,\s*"package-type"\)/g;
+        END {
+            print join " ", map { $_ || 0 } (
+                $support_before, $support_after_count,
+                $package_type_before, $package_type_after,
+            );
+        }' \
+        "$APP_ASAR"
+}
+
 app_var="$(detect_app_var)"
-li_before_count="$(count_support_before_marker)"
-li_after_count="$(count_support_after_marker)"
+read -r li_before_count li_after_count package_type_before_count package_type_after_count \
+    <<< "$(collect_marker_counts "$app_var")"
 ti_before_count="0"
 if [[ -n "$app_var" ]]; then
     ti_before_count="$(count_ti_before_marker "$app_var")"
 fi
 ti_after_count="$(count_ti_after_marker)"
-package_type_before_count="$(count_package_type_before_marker)"
-package_type_after_count="$(count_package_type_after_marker)"
 
 # Check if the patch is already applied
 if [[ "$li_before_count" -eq 0 ]] &&
@@ -357,12 +378,10 @@ LC_ALL=C perl -0pi \
             unless length($_) == $original_length;' \
     "$APP_ASAR"
 
-li_before_count="$(count_support_before_marker)"
-li_after_count="$(count_support_after_marker)"
+read -r li_before_count li_after_count package_type_before_count package_type_after_count \
+    <<< "$(collect_marker_counts "$app_var")"
 ti_before_count="$(count_ti_before_marker "$app_var")"
 ti_after_count="$(count_ti_after_marker)"
-package_type_before_count="$(count_package_type_before_marker)"
-package_type_after_count="$(count_package_type_after_marker)"
 
 if [[ "$li_before_count" -ne 0 ]]; then
     echo "Error: auto-update support marker was not fully patched" >&2
