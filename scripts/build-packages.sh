@@ -274,7 +274,6 @@ LICENSE="Proprietary"
 URL="https://alma.now"
 
 STANDALONE_PACMAN="dist/alma-${VERSION}-1-x86_64.pkg.tar.zst"
-STANDALONE_DEB="dist/alma_${VERSION}-1_amd64.deb"
 SYSTEM_RPM="dist/alma-system-${VERSION}-1.x86_64.rpm"
 SYSTEM_PACMAN="dist/alma-system-${VERSION}-1-x86_64.pkg.tar.zst"
 
@@ -286,7 +285,7 @@ echo "=== Building Standalone Packages ==="
 echo ""
 
 # --- Standalone Pacman ---
-echo "[1/4] Building standalone Pacman..."
+echo "[1/3] Building standalone Pacman..."
 set_package_type "$BASE_PATH/resources" pacman
 write_nfpm_config extracted/nfpm-standalone-archlinux.yaml \
     alma \
@@ -299,23 +298,6 @@ append_script_if_exists extracted/nfpm-standalone-archlinux.yaml postinstall ext
 append_script_if_exists extracted/nfpm-standalone-archlinux.yaml preremove extracted/DEBIAN/prerm
 build_nfpm_package extracted/nfpm-standalone-archlinux.yaml archlinux "$STANDALONE_PACMAN"
 echo "  ✓ Created: $STANDALONE_PACMAN"
-echo ""
-
-# --- Standalone DEB ---
-echo "[2/4] Building standalone DEB..."
-set_package_type "$BASE_PATH/resources" deb
-write_nfpm_config extracted/nfpm-standalone-deb.yaml \
-    alma \
-    amd64 \
-    "$DESCRIPTION (standalone with bundled Electron)" \
-    extracted/data \
-    deb
-append_scripts_section extracted/nfpm-standalone-deb.yaml extracted/DEBIAN/postinst extracted/DEBIAN/prerm extracted/DEBIAN/postrm
-append_script_if_exists extracted/nfpm-standalone-deb.yaml postinstall extracted/DEBIAN/postinst
-append_script_if_exists extracted/nfpm-standalone-deb.yaml preremove extracted/DEBIAN/prerm
-append_script_if_exists extracted/nfpm-standalone-deb.yaml postremove extracted/DEBIAN/postrm
-build_nfpm_package extracted/nfpm-standalone-deb.yaml deb "$STANDALONE_DEB"
-echo "  ✓ Created: $STANDALONE_DEB"
 echo ""
 
 # =============================================================================
@@ -388,7 +370,7 @@ echo "  ✓ System package content ready"
 echo ""
 
 # --- System RPM ---
-echo "[3/4] Building system RPM..."
+echo "[2/3] Building system RPM..."
 set_package_type extracted/system-build/usr/lib/alma/resources rpm
 write_nfpm_config extracted/nfpm-system-rpm.yaml \
     alma-system \
@@ -406,7 +388,7 @@ echo "  ✓ Created: $SYSTEM_RPM"
 echo ""
 
 # --- System Pacman ---
-echo "[4/4] Building system Pacman..."
+echo "[3/3] Building system Pacman..."
 set_package_type extracted/system-build/usr/lib/alma/resources pacman
 write_nfpm_config extracted/nfpm-system-archlinux.yaml \
     alma-system \
@@ -431,10 +413,10 @@ echo "Build complete!"
 echo "==================================="
 echo ""
 echo "Standalone packages (with Electron):"
-ls -lh dist/alma-$VERSION-*.pkg.tar.zst dist/alma_$VERSION-*.deb 2>/dev/null | awk '{print "  " $9, "(" $5 ")"}'
+ls -lh dist/alma-$VERSION-*.pkg.tar.zst 2>/dev/null | awk '{print "  " $9, "(" $5 ")"}'
 echo ""
 echo "System packages (use system Electron $ELECTRON_MAJOR):"
 ls -lh dist/alma-system-$VERSION-*.rpm dist/alma-system-$VERSION-*.pkg.tar.zst 2>/dev/null | awk '{print "  " $9, "(" $5 ")"}'
 echo ""
-echo "Total packages: $(ls -1 dist/*.{rpm,pkg.tar.zst,deb} 2>/dev/null | wc -l)"
+echo "Total packages: $(ls -1 dist/*.{rpm,pkg.tar.zst} 2>/dev/null | wc -l)"
 echo "Total blockmaps: $(ls -1 dist/*.blockmap 2>/dev/null | wc -l)"

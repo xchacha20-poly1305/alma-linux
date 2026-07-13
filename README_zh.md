@@ -7,7 +7,6 @@
 该仓库每天自动检查 Alma 是否发布新版本，并构建以下包格式：
 
 - **Pacman** (Arch Linux, Manjaro 等)
-- **DEB** (Debian, Ubuntu 等)
 - **System RPM** (Fedora, RHEL, openSUSE 等)
 
 包变体：
@@ -43,15 +42,6 @@ wget https://github.com/xchacha20-poly1305/alma-linux/releases/latest/download/a
 sudo rpm -i alma-system-VERSION-1.x86_64.rpm
 ```
 
-### Debian/Ubuntu
-
-只提供 standalone DEB 包。本仓库不提供 system-Electron DEB，因为 Debian/Ubuntu 并不稳定通过 apt 提供兼容的 Electron 运行时。
-
-```bash
-wget https://github.com/xchacha20-poly1305/alma-linux/releases/latest/download/alma_VERSION-1_amd64.deb
-sudo dpkg -i alma_VERSION-1_amd64.deb
-sudo apt-get install -f  # 安装依赖（如果需要）
-```
 
 ## 系统要求
 
@@ -200,7 +190,7 @@ ls -lh dist/
 
 **Standalone**: 自带完整的 Electron 运行时，开箱即用，但体积较大（~300MB）。
 
-**System**: 使用系统安装的 Electron，体积小（~50MB），但要求发行版提供兼容的 Electron 包和可执行文件。System 变体不提供 DEB 包。
+**System**：使用系统安装的 Electron，体积小（~50MB），但要求发行版提供兼容的 Electron 包和可执行文件。
 
 ### Q: System 版本提示找不到 Electron？
 

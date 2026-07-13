@@ -107,24 +107,22 @@ EOF
 # Create output directory
 mkdir -p dist
 
-DEB_FILE="dist/alma_${VERSION}-1_amd64.deb"
 PACMAN_FILE="dist/alma-${VERSION}-1-x86_64.pkg.tar.zst"
 SYSTEM_RPM_FILE="dist/alma-system-${VERSION}-1.x86_64.rpm"
 SYSTEM_PACMAN_FILE="dist/alma-system-${VERSION}-1-x86_64.pkg.tar.zst"
 
 write_manifest_header dist/latest-linux.yml
-add_package_file dist/latest-linux.yml "$DEB_FILE" standalone deb amd64
 add_package_file dist/latest-linux.yml "$PACMAN_FILE" standalone pacman x86_64
 add_package_file dist/latest-linux.yml "$SYSTEM_RPM_FILE" system rpm x86_64
 add_package_file dist/latest-linux.yml "$SYSTEM_PACMAN_FILE" system pacman x86_64
-write_manifest_footer dist/latest-linux.yml "$DEB_FILE" "  - Standalone packages include the full Electron runtime
-  - System RPM/Pacman packages require a matching system Electron runtime
+write_manifest_footer dist/latest-linux.yml "$PACMAN_FILE" "  - Standalone packages include the full Electron runtime
+  - System packages require a matching system Electron runtime
   - System packages use the separate system-linux.yml update channel"
 
 write_manifest_header dist/system-linux.yml
 add_package_file dist/system-linux.yml "$SYSTEM_RPM_FILE" system rpm x86_64
 add_package_file dist/system-linux.yml "$SYSTEM_PACMAN_FILE" system pacman x86_64
-write_manifest_footer dist/system-linux.yml "$SYSTEM_RPM_FILE" "  - System RPM/Pacman packages require a matching system Electron runtime
+write_manifest_footer dist/system-linux.yml "$SYSTEM_RPM_FILE" "  - System packages require a matching system Electron runtime
   - This manifest is used only by packages with channel: system"
 
 echo "✓ Generated: dist/latest-linux.yml"

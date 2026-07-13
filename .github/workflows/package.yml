@@ -154,7 +154,6 @@ jobs:
           path: |
             dist/*.rpm
             dist/*.pkg.tar.zst
-            dist/*.deb
             dist/*.blockmap
             dist/latest-linux.yml
             dist/system-linux.yml
@@ -186,11 +185,10 @@ jobs:
 
           ## Package Variants
 
-          This release provides **standalone** packages for DEB and Pacman formats. **System** packages are provided for RPM and Pacman only.
+          This release provides **standalone** packages for pacman only and **System** packages.
 
           ### Standalone Packages
           Include the full Electron ${ELECTRON_MAJOR} runtime (~300-500 MB):
-          - \`alma_${VERSION}-1_amd64.deb\` - For Debian, Ubuntu
           - \`alma-${VERSION}-1-x86_64.pkg.tar.zst\` - For Arch Linux, Manjaro
 
           ### System Packages
@@ -214,7 +212,6 @@ jobs:
             --notes-file release-notes.md \
             dist/*-system-*.rpm \
             dist/*.pkg.tar.zst \
-            dist/*.deb \
             dist/*.blockmap \
             dist/latest-linux.yml \
             dist/system-linux.yml

@@ -7,7 +7,6 @@ Automated packaging tool to build multiple Linux package formats for [Alma](http
 This repository automatically checks for new Alma releases daily and builds the following package formats:
 
 - **Pacman** (Arch Linux, Manjaro, etc.)
-- **DEB** (Debian, Ubuntu, etc.)
 - **System RPM** (Fedora, RHEL, openSUSE, etc.)
 
 Package variants:
@@ -43,15 +42,6 @@ wget https://github.com/xchacha20-poly1305/alma-linux/releases/latest/download/a
 sudo rpm -i alma-system-VERSION-1.x86_64.rpm
 ```
 
-### Debian/Ubuntu
-
-Only the standalone DEB package is provided. This repository does not ship a system-Electron DEB because Debian/Ubuntu do not consistently provide a compatible Electron runtime through apt.
-
-```bash
-wget https://github.com/xchacha20-poly1305/alma-linux/releases/latest/download/alma_VERSION-1_amd64.deb
-sudo dpkg -i alma_VERSION-1_amd64.deb
-sudo apt-get install -f  # Install dependencies if needed
-```
 
 ## System Requirements
 
@@ -200,7 +190,7 @@ ls -lh dist/
 
 **Standalone**: Includes complete Electron runtime, ready to use out of the box, but larger size (~300MB).
 
-**System**: Uses system-installed Electron, smaller size (~50MB), but requires a compatible Electron package and executable from your distribution. The system variant is not provided as a DEB package.
+**System**: Uses system-installed Electron, smaller size (~50MB), but requires a compatible Electron package and executable from your distribution.
 
 ### Q: System version says Electron not found?
 
