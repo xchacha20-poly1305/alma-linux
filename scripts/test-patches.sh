@@ -96,6 +96,29 @@ EOF
         "$PATCH_DIR/001-disable-activity-recorder-default.sh" "$app_dir"
 }
 
+test_activity_recorder_linux_autostart_patch() {
+    local app_dir
+    local app_asar
+
+    app_dir="$(make_app_dir activity-recorder-linux-autostart)"
+    app_asar="$app_dir/resources/app.asar"
+
+    cat > "$app_asar" <<'EOF'
+const NT={enabled:!0,outputDir:"/tmp/alma-activity"};
+class Api{initializeActivityRecorder(){try{const e=Ro.getSettings(),t=e?JSON.parse(e.settingsData):{},n=t?.activityRecorder;(function(e,t){return"linux"===e?!0===t?.enabled:!(t&&!1===t.enabled)})(process.platform,n)&&(this.ensureActivityServices(),this.activityRecorderService?.start())}catch(e){}}}
+EOF
+
+    "$PATCH_DIR/001-disable-activity-recorder-default.sh" "$app_dir" >/dev/null
+    assert_count "$app_asar" 'enabled:!0,outputDir' 0
+    assert_count "$app_asar" 'enabled:!1,outputDir' 1
+    assert_count "$app_asar" 'return"linux"===e?!0===t?.enabled:!(t&&!1===t.enabled)' 0
+    assert_count "$app_asar" 'return"linux"===e?!!t?.enabled   :!(t&&!1===t.enabled)' 1
+
+    "$PATCH_DIR/001-disable-activity-recorder-default.sh" "$app_dir" >/dev/null
+    assert_count "$app_asar" 'enabled:!1,outputDir' 1
+    assert_count "$app_asar" 'return"linux"===e?!!t?.enabled   :!(t&&!1===t.enabled)' 1
+}
+
 test_auto_update_patch() {
     local app_dir
     local app_asar
@@ -201,6 +224,7 @@ EOF
 
 test_activity_recorder_patch
 test_activity_recorder_duplicate_marker_fails
+test_activity_recorder_linux_autostart_patch
 test_auto_update_patch
 test_auto_update_patch_renamed_aliases
 test_auto_update_patch_symbol_aliases
