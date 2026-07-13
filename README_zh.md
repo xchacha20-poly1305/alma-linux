@@ -6,9 +6,9 @@
 
 该仓库每天自动检查 Alma 是否发布新版本，并构建以下包格式：
 
-- **RPM** (Fedora, RHEL, openSUSE 等)
 - **Pacman** (Arch Linux, Manjaro 等)
 - **DEB** (Debian, Ubuntu 等)
+- **System RPM** (Fedora, RHEL, openSUSE 等)
 
 包变体：
 
@@ -33,12 +33,6 @@ sudo pacman -U alma-system-VERSION-1-x86_64.pkg.tar.zst
 ```
 
 ### Fedora/RHEL
-
-**Standalone 版本:**
-```bash
-wget https://github.com/xchacha20-poly1305/alma-linux/releases/latest/download/alma-VERSION-1.x86_64.rpm
-sudo rpm -i alma-VERSION-1.x86_64.rpm
-```
 
 **System 版本:**
 
@@ -125,7 +119,7 @@ updaterCacheDirName: alma-updater
    - 提取应用内容和元数据
    - 应用本仓库维护的补丁，包括将 Linux 包的首次运行 Activity Recorder 默认值设为禁用
    - 标准化文件时间戳以实现可重复构建
-   - 使用 nFPM 2.47.0 重新打包成 RPM 和 Pacman 格式
+   - 使用 nFPM 2.47.0 重新打包成 system RPM 和 Pacman 格式
    - 构建 system RPM/Pacman 版本（仅包含 app 资源，使用主版本匹配的系统 Electron 运行时）
    - 为每个发布包生成 `.blockmap` 文件
    - 生成 `latest-linux.yml` 和 `system-linux.yml` 更新清单

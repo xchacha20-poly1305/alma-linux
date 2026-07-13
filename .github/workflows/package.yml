@@ -186,11 +186,10 @@ jobs:
 
           ## Package Variants
 
-          This release provides **standalone** packages for RPM, DEB, and Pacman formats. **System** packages are provided for RPM and Pacman only.
+          This release provides **standalone** packages for DEB and Pacman formats. **System** packages are provided for RPM and Pacman only.
 
           ### Standalone Packages
           Include the full Electron ${ELECTRON_MAJOR} runtime (~300-500 MB):
-          - \`alma-${VERSION}-1.x86_64.rpm\` - For Fedora, RHEL, openSUSE
           - \`alma_${VERSION}-1_amd64.deb\` - For Debian, Ubuntu
           - \`alma-${VERSION}-1-x86_64.pkg.tar.zst\` - For Arch Linux, Manjaro
 
@@ -213,7 +212,7 @@ jobs:
           gh release create "v$VERSION" \
             --title "Alma v$VERSION" \
             --notes-file release-notes.md \
-            dist/*.rpm \
+            dist/*-system-*.rpm \
             dist/*.pkg.tar.zst \
             dist/*.deb \
             dist/*.blockmap \

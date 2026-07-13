@@ -6,9 +6,9 @@ Automated packaging tool to build multiple Linux package formats for [Alma](http
 
 This repository automatically checks for new Alma releases daily and builds the following package formats:
 
-- **RPM** (Fedora, RHEL, openSUSE, etc.)
 - **Pacman** (Arch Linux, Manjaro, etc.)
 - **DEB** (Debian, Ubuntu, etc.)
+- **System RPM** (Fedora, RHEL, openSUSE, etc.)
 
 Package variants:
 
@@ -33,12 +33,6 @@ sudo pacman -U alma-system-VERSION-1-x86_64.pkg.tar.zst
 ```
 
 ### Fedora/RHEL
-
-**Standalone version:**
-```bash
-wget https://github.com/xchacha20-poly1305/alma-linux/releases/latest/download/alma-VERSION-1.x86_64.rpm
-sudo rpm -i alma-VERSION-1.x86_64.rpm
-```
 
 **System version:**
 
@@ -125,7 +119,7 @@ updaterCacheDirName: alma-updater
    - Extracts application contents and metadata
    - Applies repository-maintained patches, including disabling the first-run Activity Recorder default for Linux packages
    - Normalizes file timestamps for reproducible builds
-   - Repackages into RPM and Pacman formats using nFPM 2.47.0
+   - Repackages into system RPM and Pacman formats using nFPM 2.47.0
    - Builds system RPM/Pacman versions (contains only app resources and uses matching system Electron runtime)
    - Generates `.blockmap` files for every release package
    - Generates `latest-linux.yml` and `system-linux.yml` update manifests
