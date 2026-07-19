@@ -197,7 +197,8 @@ ti_after_count="$(count_ti_after_marker)"
 
 # Check if the patch is already applied
 if [[ "$li_before_count" -eq 0 ]] &&
-    [[ "$li_after_count" -eq 2 ]] &&
+    [[ "$li_after_count" -ge 2 ]] &&
+    [[ "$li_after_count" -le 3 ]] &&
     [[ "$ti_before_count" -eq 0 ]] &&
     [[ "$ti_after_count" -eq 1 ]] &&
     [[ "$package_type_before_count" -eq 0 ]] &&
@@ -206,12 +207,16 @@ if [[ "$li_before_count" -eq 0 ]] &&
     exit 0
 fi
 
-# Check if the original patterns exist
-if [[ "$li_before_count" -ne 2 ]]; then
-    echo "Error: expected 2 auto-update support markers, found $li_before_count" >&2
+# Alma v0.0.878 added a third packaged-update support check. All supported
+# variants use the same stable path.join semantics; more than three remains a
+# duplicate-marker compatibility failure until it is inspected explicitly.
+if [[ "$li_before_count" -lt 2 || "$li_before_count" -gt 3 ]]; then
+    echo "Error: expected 2 or 3 auto-update support markers, found $li_before_count" >&2
     echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
     exit 1
 fi
+
+expected_support_count="$li_before_count"
 if [[ "$li_after_count" -ne 0 ]]; then
     echo "Error: auto-update support marker appears partially patched" >&2
     echo "This may indicate the Alma version has changed or the patch is partially applied." >&2
@@ -387,8 +392,8 @@ if [[ "$li_before_count" -ne 0 ]]; then
     echo "Error: auto-update support marker was not fully patched" >&2
     exit 1
 fi
-if [[ "$li_after_count" -ne 2 ]]; then
-    echo "Error: patched auto-update support marker count is $li_after_count, expected 2" >&2
+if [[ "$li_after_count" -ne "$expected_support_count" ]]; then
+    echo "Error: patched auto-update support marker count is $li_after_count, expected $expected_support_count" >&2
     exit 1
 fi
 if [[ "$ti_before_count" -ne 0 ]]; then

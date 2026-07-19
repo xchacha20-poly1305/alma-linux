@@ -204,6 +204,28 @@ EOF
     assert_count "$app_asar" 'path.join(process.env.APPDIR||process.resourcesPath,"package-type")' 1
 }
 
+test_auto_update_patch_three_markers() {
+    local app_dir
+    local app_asar
+
+    app_dir="$(make_app_dir auto-update-three-markers)"
+    app_asar="$app_dir/resources/app.asar"
+
+    cat > "$app_asar" <<'EOF'
+import{app as n}from"electron";import p,{dirname as q,join as H}from"path";
+function ni(){if(!ti){const e=Vr("electron-updater");ti=e.autoUpdater,ti.logger={info:Qr.info,warn:Qr.warn,error:Qr.error,debug:Qr.log},!n.isPackaged&&T(Kr)&&(ti.updateConfigPath=Kr,ti.forceDevUpdateConfig=!0,Qr.info(`Using dev update config: ${Kr}`))}return ti}
+function di(){const e=H(process.resourcesPath,"app-update.yml");const t=H(process.resourcesPath,"app-update.yml");const o=H(process.resourcesPath,"app-update.yml");return T(e)||T(t)||T(o)}
+const identity=path.join(process.resourcesPath, "package-type");console.info("Checking for beta autoupdate feature for deb/rpm distributions");
+EOF
+
+    "$PATCH_DIR/002-fix-system-auto-update.sh" "$app_dir" >/dev/null
+    assert_count "$app_asar" 'H(process.resourcesPath,"app-update.yml")' 0
+    assert_count "$app_asar" 'H(q(n.getAppPath()),"app-update.yml")/**/' 3
+
+    "$PATCH_DIR/002-fix-system-auto-update.sh" "$app_dir" >/dev/null
+    assert_count "$app_asar" 'H(q(n.getAppPath()),"app-update.yml")/**/' 3
+}
+
 test_auto_update_duplicate_marker_fails() {
     local app_dir
     local app_asar
@@ -214,7 +236,7 @@ test_auto_update_duplicate_marker_fails() {
     cat > "$app_asar" <<'EOF'
 import{app as n}from"electron";import p,{dirname as q,join as H}from"path";
 function ni(){if(!ti){const e=Vr("electron-updater");ti=e.autoUpdater,ti.logger={info:Qr.info,warn:Qr.warn,error:Qr.error,debug:Qr.log},!n.isPackaged&&T(Kr)&&(ti.updateConfigPath=Kr,ti.forceDevUpdateConfig=!0,Qr.info(`Using dev update config: ${Kr}`))}return ti}
-function di(){const e=H(process.resourcesPath,"app-update.yml");const t=H(process.resourcesPath,"app-update.yml");const o=H(process.resourcesPath,"app-update.yml");return T(e)||T(t)||T(o)}
+function di(){const e=H(process.resourcesPath,"app-update.yml");const t=H(process.resourcesPath,"app-update.yml");const o=H(process.resourcesPath,"app-update.yml");const r=H(process.resourcesPath,"app-update.yml");return T(e)||T(t)||T(o)||T(r)}
 const identity=path.join(process.resourcesPath, "package-type");console.info("Checking for beta autoupdate feature for deb/rpm distributions");
 EOF
 
@@ -228,6 +250,7 @@ test_activity_recorder_linux_autostart_patch
 test_auto_update_patch
 test_auto_update_patch_renamed_aliases
 test_auto_update_patch_symbol_aliases
+test_auto_update_patch_three_markers
 test_auto_update_duplicate_marker_fails
 
 echo "Patch fixture tests passed"
