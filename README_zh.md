@@ -114,6 +114,7 @@ updaterCacheDirName: alma-updater
    - 为每个发布包生成 `.blockmap` 文件
    - 生成 `latest-linux.yml` 和 `system-linux.yml` 更新清单
 4. **发布** - 创建 GitHub Release 并上传所有包、blockmap 和更新清单
+5. **保留策略** - 仅保留最近 50 个版本的可下载发布内容。更早的 GitHub Release 仍会保留说明，但会删除包文件、blockmap 和更新清单。
 
 ### 可重复构建
 

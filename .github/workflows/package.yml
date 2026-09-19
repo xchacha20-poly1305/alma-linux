@@ -216,6 +216,13 @@ jobs:
             dist/latest-linux.yml \
             dist/system-linux.yml
 
+      - name: Prune old release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          chmod +x scripts/prune-old-release-assets.sh
+          ./scripts/prune-old-release-assets.sh 50 "${{ github.repository }}"
+
       - name: Summary
         if: steps.check.outputs.skip != 'true'
         run: |
