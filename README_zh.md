@@ -14,6 +14,11 @@
 - **Standalone** - 包含完整 Electron 运行时，开箱即用
 - **System** - 只提供 RPM 和 Pacman。使用发行版提供的 Electron 运行时，启动器会拒绝主版本不匹配的 Electron 可执行文件。
 
+支持的架构：
+
+- **x86_64** - 由上游 `amd64` DEB 构建
+- **aarch64** (arm64) - 只要上游为同一版本发布了 `arm64` DEB 就会一并构建。把下面文件名中的 `x86_64` 换成 `aarch64` 即可（如 `alma-VERSION-1-aarch64.pkg.tar.zst`、`alma-system-VERSION-1.aarch64.rpm`）。
+
 ## 安装
 
 ### Arch Linux
@@ -86,6 +91,8 @@ repo: alma-linux
 
 System 包还会设置 `channel: system`，因此 electron-updater 会读取 `system-linux.yml` 并下载 `alma-system-*` RPM/Pacman 更新，而不是 standalone 包。
 
+在 aarch64 上，electron-updater 会自动请求带 `-arm64` 后缀的清单（`latest-linux-arm64.yml` / `system-linux-arm64.yml`），其中只列出 aarch64 的包。两种架构的更新配置完全相同，无需额外设置。
+
 如需切换回官方更新源，可手动修改配置文件：
 - **Standalone 版本**：`/opt/Alma/resources/app-update.yml`
 - **System 版本**：`/usr/lib/alma/resources/app-update.yml`
@@ -97,13 +104,13 @@ url: https://updates.alma.now/
 updaterCacheDirName: alma-updater
 ```
 
-**技术说明**：Alma 使用 electron-updater 6.6.2，完全支持 GitHub Releases 作为更新源。`latest-linux.yml` 和 `system-linux.yml` 包含版本信息、文件列表、SHA512 校验和以及 blockmap 大小，确保更新安全可靠。每个发布包都会有一个对应的 `.blockmap` 资产用于差分更新元数据。
+**技术说明**：Alma 使用 electron-updater 6.6.2，完全支持 GitHub Releases 作为更新源。`latest-linux.yml` / `system-linux.yml`（x86_64）以及 `latest-linux-arm64.yml` / `system-linux-arm64.yml`（aarch64）包含版本信息、文件列表、SHA512 校验和以及 blockmap 大小，确保更新安全可靠。每个发布包都会有一个对应的 `.blockmap` 资产用于差分更新元数据。
 
 ## 工作原理
 
 1. **每日检查** - GitHub Actions 每天 UTC 02:00 自动运行
-2. **版本检测** - 获取 `https://updates.alma.now/latest-linux.yml` 并解析版本号
-3. **构建包** - 如果发现新版本：
+2. **版本检测** - 获取 `https://updates.alma.now/latest-linux.yml` 并解析版本号，再检查 `latest-linux-arm64.yml` 是否为同一版本
+3. **构建包** - 如果发现新版本（amd64 必建，arm64 在上游已发布时一并构建）：
    - 下载上游 DEB 包
    - 验证 SHA512 校验和
    - 提取应用内容和元数据
@@ -112,7 +119,7 @@ updaterCacheDirName: alma-updater
    - 使用 nFPM 2.47.0 重新打包成 system RPM 和 Pacman 格式
    - 构建 system RPM/Pacman 版本（仅包含 app 资源，使用主版本匹配的系统 Electron 运行时）
    - 为每个发布包生成 `.blockmap` 文件
-   - 生成 `latest-linux.yml` 和 `system-linux.yml` 更新清单
+   - 生成 `latest-linux.yml` 和 `system-linux.yml` 更新清单（构建了 aarch64 包时还会生成对应的 `-arm64` 清单）
 4. **发布** - 创建 GitHub Release 并上传所有包、blockmap 和更新清单
 5. **保留策略** - 仅保留最近 50 个版本的可下载发布内容。更早的 GitHub Release 仍会保留说明，但会删除包文件、blockmap 和更新清单。
 

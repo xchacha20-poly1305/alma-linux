@@ -15,6 +15,19 @@ fi
 APP_PATH=$(cat extracted/APP_PATH)
 BASE_PATH="extracted/data/$APP_PATH"
 
+# Derive the package architecture from the upstream DEB so amd64 and arm64
+# builds share one pipeline. nfpm passes these names through unchanged, and
+# they match what RPM and Pacman expect (x86_64 / aarch64).
+DEB_ARCH=$(sed -n 's/^Architecture:[[:space:]]*//p' extracted/DEBIAN/control | head -n 1)
+case "$DEB_ARCH" in
+    amd64) PKG_ARCH="x86_64" ;;
+    arm64) PKG_ARCH="aarch64" ;;
+    *)
+        echo "Error: unsupported upstream DEB architecture: '${DEB_ARCH:-unknown}'" >&2
+        exit 1
+        ;;
+esac
+
 # Set SOURCE_DATE_EPOCH for reproducible builds if not already set
 if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
     if SOURCE_DATE_EPOCH=$(git log -1 --format=%ct 2>/dev/null); then
@@ -237,8 +250,8 @@ build_nfpm_package() {
     generate_blockmap "$target_path"
 }
 
-echo "Building packages for Alma v$VERSION (Electron $ELECTRON_MAJOR)"
-echo "Source: $BASE_PATH"
+echo "Building packages for Alma v$VERSION (Electron $ELECTRON_MAJOR, $PKG_ARCH)"
+echo "Source: $BASE_PATH (upstream DEB arch: $DEB_ARCH)"
 echo "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH ($(format_epoch))"
 echo "nFPM mtime: $NFPM_MTIME"
 echo ""
@@ -273,9 +286,9 @@ MAINTAINER="安容 <HystericalDragons@proton.me>"
 LICENSE="Proprietary"
 URL="https://alma.now"
 
-STANDALONE_PACMAN="dist/alma-${VERSION}-1-x86_64.pkg.tar.zst"
-SYSTEM_RPM="dist/alma-system-${VERSION}-1.x86_64.rpm"
-SYSTEM_PACMAN="dist/alma-system-${VERSION}-1-x86_64.pkg.tar.zst"
+STANDALONE_PACMAN="dist/alma-${VERSION}-1-${PKG_ARCH}.pkg.tar.zst"
+SYSTEM_RPM="dist/alma-system-${VERSION}-1.${PKG_ARCH}.rpm"
+SYSTEM_PACMAN="dist/alma-system-${VERSION}-1-${PKG_ARCH}.pkg.tar.zst"
 
 # =============================================================================
 # STANDALONE PACKAGES (include full Electron runtime)
@@ -289,7 +302,7 @@ echo "[1/3] Building standalone Pacman..."
 set_package_type "$BASE_PATH/resources" pacman
 write_nfpm_config extracted/nfpm-standalone-archlinux.yaml \
     alma \
-    x86_64 \
+    "$PKG_ARCH" \
     "$DESCRIPTION (standalone with bundled Electron)" \
     extracted/data \
     archlinux
@@ -374,7 +387,7 @@ echo "[2/3] Building system RPM..."
 set_package_type extracted/system-build/usr/lib/alma/resources rpm
 write_nfpm_config extracted/nfpm-system-rpm.yaml \
     alma-system \
-    x86_64 \
+    "$PKG_ARCH" \
     "$DESCRIPTION (uses system Electron runtime)" \
     extracted/system-build \
     rpm \
@@ -392,7 +405,7 @@ echo "[3/3] Building system Pacman..."
 set_package_type extracted/system-build/usr/lib/alma/resources pacman
 write_nfpm_config extracted/nfpm-system-archlinux.yaml \
     alma-system \
-    x86_64 \
+    "$PKG_ARCH" \
     "$DESCRIPTION (uses system Electron runtime)" \
     extracted/system-build \
     archlinux \
@@ -413,10 +426,10 @@ echo "Build complete!"
 echo "==================================="
 echo ""
 echo "Standalone packages (with Electron):"
-ls -lh dist/alma-$VERSION-*.pkg.tar.zst 2>/dev/null | awk '{print "  " $9, "(" $5 ")"}'
+ls -lh dist/alma-$VERSION-*-$PKG_ARCH.pkg.tar.zst 2>/dev/null | awk '{print "  " $9, "(" $5 ")"}'
 echo ""
 echo "System packages (use system Electron $ELECTRON_MAJOR):"
-ls -lh dist/alma-system-$VERSION-*.rpm dist/alma-system-$VERSION-*.pkg.tar.zst 2>/dev/null | awk '{print "  " $9, "(" $5 ")"}'
+ls -lh dist/alma-system-$VERSION-*.$PKG_ARCH.rpm dist/alma-system-$VERSION-*-$PKG_ARCH.pkg.tar.zst 2>/dev/null | awk '{print "  " $9, "(" $5 ")"}'
 echo ""
 echo "Total packages: $(ls -1 dist/*.{rpm,pkg.tar.zst} 2>/dev/null | wc -l)"
 echo "Total blockmaps: $(ls -1 dist/*.blockmap 2>/dev/null | wc -l)"

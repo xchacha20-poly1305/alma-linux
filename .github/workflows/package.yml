@@ -57,6 +57,23 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "release_date=$RELEASE_DATE" >> $GITHUB_OUTPUT
 
+          # Upstream publishes a separate arm64 manifest a few minutes after the
+          # amd64 one. Build arm64 packages only when it reports the same
+          # version; otherwise release amd64 only rather than blocking.
+          ARM64_AVAILABLE=false
+          if curl -fsSL https://updates.alma.now/latest-linux-arm64.yml -o latest-linux-arm64.yml; then
+            ARM64_VERSION=$(yq .version latest-linux-arm64.yml)
+            if [[ "$ARM64_VERSION" == "$VERSION" ]]; then
+              ARM64_AVAILABLE=true
+              echo "Found matching arm64 release: $ARM64_VERSION"
+            else
+              echo "::warning::arm64 manifest reports $ARM64_VERSION, amd64 reports $VERSION; skipping arm64 packages"
+            fi
+          else
+            echo "::warning::latest-linux-arm64.yml not available upstream; skipping arm64 packages"
+          fi
+          echo "arm64_available=$ARM64_AVAILABLE" >> $GITHUB_OUTPUT
+
           # Set SOURCE_DATE_EPOCH for reproducible builds (use release date)
           SOURCE_DATE_EPOCH=$(date -d "$RELEASE_DATE" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${RELEASE_DATE%%.*}" +%s 2>/dev/null || echo "$(date +%s)")
           echo "source_date_epoch=$SOURCE_DATE_EPOCH" >> $GITHUB_OUTPUT
@@ -77,35 +94,35 @@ jobs:
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Download DEB package
+      - name: Download DEB package (amd64)
         if: steps.check.outputs.skip != 'true'
         run: |
           DEB_URL=$(yq '.files[] | select(.url | test("amd64.deb")) | .url' latest-linux.yml)
           EXPECTED_SHA512_B64=$(yq '.files[] | select(.url | test("amd64.deb")) | .sha512' latest-linux.yml)
 
           echo "Downloading: https://updates.alma.now/$DEB_URL"
-          wget -q --show-progress -O alma.deb "https://updates.alma.now/$DEB_URL"
+          wget -q --show-progress -O alma-amd64.deb "https://updates.alma.now/$DEB_URL"
 
           echo "Verifying checksum..."
           # Convert Base64 SHA-512 to hex format
           EXPECTED_SHA512_HEX=$(echo "$EXPECTED_SHA512_B64" | base64 -d | xxd -p -c 256)
-          echo "$EXPECTED_SHA512_HEX  alma.deb" | sha512sum -c -
+          echo "$EXPECTED_SHA512_HEX  alma-amd64.deb" | sha512sum -c -
 
-          echo "✓ DEB package downloaded and verified"
+          echo "✓ amd64 DEB package downloaded and verified"
 
-      - name: Extract DEB package
+      - name: Extract DEB package (amd64)
         if: steps.check.outputs.skip != 'true'
         run: |
           chmod +x scripts/extract-deb.sh
-          ./scripts/extract-deb.sh alma.deb
+          ./scripts/extract-deb.sh alma-amd64.deb
 
-      - name: Patch preflight
+      - name: Patch preflight (amd64)
         if: steps.check.outputs.skip != 'true'
         run: |
           chmod +x scripts/apply-patches.sh scripts/patches/*.sh
           ./scripts/apply-patches.sh "extracted/data/$(cat extracted/APP_PATH)"
 
-      - name: Determine Electron version
+      - name: Determine Electron version (amd64)
         if: steps.check.outputs.skip != 'true'
         id: electron
         run: |
@@ -114,7 +131,7 @@ jobs:
           echo "electron_major=$ELECTRON_MAJOR" >> $GITHUB_OUTPUT
           echo "Detected Electron major version: $ELECTRON_MAJOR"
 
-      - name: Build all packages
+      - name: Build all packages (amd64)
         if: steps.check.outputs.skip != 'true'
         env:
           SOURCE_DATE_EPOCH: ${{ steps.version.outputs.source_date_epoch }}
@@ -123,6 +140,51 @@ jobs:
           ./scripts/build-packages.sh \
             "${{ steps.version.outputs.version }}" \
             "${{ steps.electron.outputs.electron_major }}"
+
+      # arm64 reuses the same scripts. extract-deb.sh recreates extracted/, so
+      # the amd64 tree is gone after this point; its packages are already in dist/.
+      - name: Download DEB package (arm64)
+        if: steps.check.outputs.skip != 'true' && steps.version.outputs.arm64_available == 'true'
+        run: |
+          DEB_URL=$(yq '.files[] | select(.url | test("arm64.deb")) | .url' latest-linux-arm64.yml)
+          EXPECTED_SHA512_B64=$(yq '.files[] | select(.url | test("arm64.deb")) | .sha512' latest-linux-arm64.yml)
+
+          echo "Downloading: https://updates.alma.now/$DEB_URL"
+          wget -q --show-progress -O alma-arm64.deb "https://updates.alma.now/$DEB_URL"
+
+          echo "Verifying checksum..."
+          EXPECTED_SHA512_HEX=$(echo "$EXPECTED_SHA512_B64" | base64 -d | xxd -p -c 256)
+          echo "$EXPECTED_SHA512_HEX  alma-arm64.deb" | sha512sum -c -
+
+          echo "✓ arm64 DEB package downloaded and verified"
+
+      - name: Extract DEB package (arm64)
+        if: steps.check.outputs.skip != 'true' && steps.version.outputs.arm64_available == 'true'
+        run: |
+          rm -f alma-amd64.deb
+          ./scripts/extract-deb.sh alma-arm64.deb
+
+      - name: Patch preflight (arm64)
+        if: steps.check.outputs.skip != 'true' && steps.version.outputs.arm64_available == 'true'
+        run: |
+          ./scripts/apply-patches.sh "extracted/data/$(cat extracted/APP_PATH)"
+
+      - name: Determine Electron version (arm64)
+        if: steps.check.outputs.skip != 'true' && steps.version.outputs.arm64_available == 'true'
+        id: electron_arm64
+        run: |
+          ELECTRON_MAJOR=$(./scripts/determine-electron.sh)
+          echo "electron_major=$ELECTRON_MAJOR" >> $GITHUB_OUTPUT
+          echo "Detected Electron major version: $ELECTRON_MAJOR"
+
+      - name: Build all packages (arm64)
+        if: steps.check.outputs.skip != 'true' && steps.version.outputs.arm64_available == 'true'
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.version.outputs.source_date_epoch }}
+        run: |
+          ./scripts/build-packages.sh \
+            "${{ steps.version.outputs.version }}" \
+            "${{ steps.electron_arm64.outputs.electron_major }}"
 
       - name: Extract release notes
         if: steps.check.outputs.skip != 'true'
@@ -155,8 +217,8 @@ jobs:
             dist/*.rpm
             dist/*.pkg.tar.zst
             dist/*.blockmap
-            dist/latest-linux.yml
-            dist/system-linux.yml
+            dist/latest-linux*.yml
+            dist/system-linux*.yml
           retention-days: 5
 
       - name: Create git tag
@@ -176,6 +238,23 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           ELECTRON_MAJOR="${{ steps.electron.outputs.electron_major }}"
+          ARM64_AVAILABLE="${{ steps.version.outputs.arm64_available }}"
+
+          if [[ "$ARM64_AVAILABLE" == "true" ]]; then
+            ARCH_LINE="Packages are published for **x86_64** and **aarch64** (arm64). Pick the file matching your CPU architecture; auto-update selects the right manifest automatically."
+            STANDALONE_ARM64="
+          - \`alma-${VERSION}-1-aarch64.pkg.tar.zst\` - For Arch Linux ARM (aarch64)"
+            SYSTEM_ARM64="
+          - \`alma-system-${VERSION}-1.aarch64.rpm\` - aarch64, requires a compatible distribution-provided Electron runtime
+          - \`alma-system-${VERSION}-1-aarch64.pkg.tar.zst\` - aarch64, requires: \`electron${ELECTRON_MAJOR}\`"
+            MANIFEST_ARM64="
+          - \`latest-linux-arm64.yml\` / \`system-linux-arm64.yml\` - The same manifests for aarch64 installs (electron-updater picks them by CPU architecture)"
+          else
+            ARCH_LINE="Upstream did not publish an arm64 build for this version, so only **x86_64** packages are included."
+            STANDALONE_ARM64=""
+            SYSTEM_ARM64=""
+            MANIFEST_ARM64=""
+          fi
 
           # Create release notes with package information
           cat > release-notes.md << EOF
@@ -187,18 +266,20 @@ jobs:
 
           This release provides **standalone** packages for pacman only and **System** packages.
 
+          ${ARCH_LINE}
+
           ### Standalone Packages
           Include the full Electron ${ELECTRON_MAJOR} runtime (~300-500 MB):
-          - \`alma-${VERSION}-1-x86_64.pkg.tar.zst\` - For Arch Linux, Manjaro
+          - \`alma-${VERSION}-1-x86_64.pkg.tar.zst\` - For Arch Linux, Manjaro${STANDALONE_ARM64}
 
           ### System Packages
           Require a matching system Electron ${ELECTRON_MAJOR} runtime (~50-100 MB). The launcher rejects Electron executables whose major version does not match.
           - \`alma-system-${VERSION}-1.x86_64.rpm\` - Requires a compatible distribution-provided Electron runtime
-          - \`alma-system-${VERSION}-1-x86_64.pkg.tar.zst\` - Requires: \`electron${ELECTRON_MAJOR}\`
+          - \`alma-system-${VERSION}-1-x86_64.pkg.tar.zst\` - Requires: \`electron${ELECTRON_MAJOR}\`${SYSTEM_ARM64}
 
           ### Auto-Update Configuration
           - \`latest-linux.yml\` - Standalone/default update manifest pointing to this repository
-          - \`system-linux.yml\` - System-package update manifest used by packages with \`channel: system\`
+          - \`system-linux.yml\` - System-package update manifest used by packages with \`channel: system\`${MANIFEST_ARM64}
           - \`*.blockmap\` - Differential update metadata for each published package file
 
           ### Privacy Default
@@ -213,8 +294,8 @@ jobs:
             dist/*-system-*.rpm \
             dist/*.pkg.tar.zst \
             dist/*.blockmap \
-            dist/latest-linux.yml \
-            dist/system-linux.yml
+            dist/latest-linux*.yml \
+            dist/system-linux*.yml
 
       - name: Prune old release assets
         env:
@@ -230,6 +311,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Electron:** ${{ steps.electron.outputs.electron_major }}" >> $GITHUB_STEP_SUMMARY
+          echo "**arm64 packages:** ${{ steps.version.outputs.arm64_available }}" >> $GITHUB_STEP_SUMMARY
           echo "**Release Date:** ${{ steps.version.outputs.release_date }}" >> $GITHUB_STEP_SUMMARY
           echo "**Released:** ${{ github.event_name == 'schedule' || inputs.release }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
