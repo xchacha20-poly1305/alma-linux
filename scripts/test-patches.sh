@@ -119,6 +119,33 @@ EOF
     assert_count "$app_asar" 'return"linux"===e?!!t?.enabled   :!(t&&!1===t.enabled)' 1
 }
 
+test_activity_recorder_headless_linux_autostart_patch() {
+    local app_dir
+    local app_asar
+    local size_before
+
+    app_dir="$(make_app_dir activity-recorder-headless-linux-autostart)"
+    app_asar="$app_dir/resources/app.asar"
+
+    cat > "$app_asar" <<'EOF'
+const TH={enabled:!0,outputDir:"/tmp/alma-activity"};
+class Api{initializeActivityRecorder(){try{const e=pi.getSettings(),t=e?JSON.parse(e.settingsData):{},n=t?.activityRecorder;(function(r,o,n=process.env){return"1"!==n.ALMA_HEADLESS&&("linux"===r?!0===o?.enabled:!(o&&!1===o.enabled))})(process.platform,n)&&(this.ensureActivityServices(),this.activityRecorderService?.start())}catch(e){}}}
+EOF
+    size_before="$(wc -c < "$app_asar")"
+
+    "$PATCH_DIR/001-disable-activity-recorder-default.sh" "$app_dir" >/dev/null
+    assert_count "$app_asar" 'enabled:!0,outputDir' 0
+    assert_count "$app_asar" 'enabled:!1,outputDir' 1
+    assert_count "$app_asar" '"linux"===r?!0===o?.enabled:!(o&&!1===o.enabled)' 0
+    assert_count "$app_asar" '"linux"===r?!!o?.enabled   :!(o&&!1===o.enabled)' 1
+    [[ "$(wc -c < "$app_asar")" -eq "$size_before" ]] ||
+        fail "headless Linux Activity Recorder patch changed app.asar size"
+
+    "$PATCH_DIR/001-disable-activity-recorder-default.sh" "$app_dir" >/dev/null
+    assert_count "$app_asar" 'enabled:!1,outputDir' 1
+    assert_count "$app_asar" '"linux"===r?!!o?.enabled   :!(o&&!1===o.enabled)' 1
+}
+
 test_auto_update_patch() {
     local app_dir
     local app_asar
@@ -247,6 +274,7 @@ EOF
 test_activity_recorder_patch
 test_activity_recorder_duplicate_marker_fails
 test_activity_recorder_linux_autostart_patch
+test_activity_recorder_headless_linux_autostart_patch
 test_auto_update_patch
 test_auto_update_patch_renamed_aliases
 test_auto_update_patch_symbol_aliases
