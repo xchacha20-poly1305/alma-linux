@@ -121,6 +121,7 @@ updaterCacheDirName: alma-updater
    - Generates `.blockmap` files for every release package
    - Generates `latest-linux.yml` and `system-linux.yml` update manifests (plus the `-arm64` pair when aarch64 packages were built)
 4. **Release** - Creates GitHub Release and uploads all packages, blockmaps, and update manifests
+   - To rebuild a version that was already released (for example after a packaging change), run the workflow manually with `force_rebuild` enabled; it deletes the existing release and tag and recreates them from the new build
 5. **Retention** - Keeps downloadable assets for the newest 50 releases. Older GitHub Releases stay published with their notes; package files, blockmaps, and update manifests are deleted.
 
 ### Reproducible Builds

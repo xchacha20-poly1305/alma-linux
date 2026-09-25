@@ -10,6 +10,11 @@ on:
         type: boolean
         default: true
         required: false
+      force_rebuild:
+        description: 'Rebuild the current upstream version even if its tag exists (deletes the existing release and tag first)'
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: write
@@ -83,12 +88,24 @@ jobs:
 
       - name: Check if version already built
         id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
 
           if git ls-remote --tags origin | grep -q "refs/tags/v$VERSION$"; then
-            echo "Version v$VERSION already exists, skipping build"
-            echo "skip=true" >> $GITHUB_OUTPUT
+            if [[ "${{ inputs.force_rebuild }}" == "true" ]]; then
+              # Manual rebuild of an already published version (for example after a
+              # packaging change). Remove the release and tag so the normal tag and
+              # release steps below can recreate them from this run's artifacts.
+              echo "Version v$VERSION already exists, force_rebuild requested: deleting release and tag"
+              gh release delete "v$VERSION" --cleanup-tag --yes || git push --delete origin "v$VERSION" || true
+              git tag -d "v$VERSION" 2>/dev/null || true
+              echo "skip=false" >> $GITHUB_OUTPUT
+            else
+              echo "Version v$VERSION already exists, skipping build"
+              echo "skip=true" >> $GITHUB_OUTPUT
+            fi
           else
             echo "New version v$VERSION detected, proceeding with build"
             echo "skip=false" >> $GITHUB_OUTPUT
