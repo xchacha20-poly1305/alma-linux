@@ -19,12 +19,17 @@ default_config_before='enabled:!0,outputDir'
 default_config_after='enabled:!1,outputDir'
 autostart_before='n&&!1===n.enabled||('
 autostart_after='n&&!!n.enabled&&   ('
-linux_autostart_before='return"linux"===e?!0===t?.enabled:!(t&&!1===t.enabled)'
-linux_autostart_after='return"linux"===e?!!t?.enabled   :!(t&&!1===t.enabled)'
+# The Linux-specific check gets wrapped in extra guards upstream (for example
+# ALMA_HEADLESS), so match only the stable ternary and capture the minified
+# aliases instead of keying on the surrounding code or variable names.
+#   unpatched: "linux"===P?!0===S?.enabled:!(S&&!1===S.enabled)
+#   patched:   "linux"===P?!!S?.enabled   :!(S&&!1===S.enabled)
+linux_autostart_ident='[A-Za-z_$][A-Za-z0-9_$]*'
+linux_autostart_before="\"linux\"===(${linux_autostart_ident})\\?!0===(${linux_autostart_ident})\\?\\.enabled:!\\(\\2&&!1===\\2\\.enabled\\)"
+linux_autostart_after="\"linux\"===(${linux_autostart_ident})\\?!!(${linux_autostart_ident})\\?\\.enabled   :!\\(\\2&&!1===\\2\\.enabled\\)"
 
 if [[ "${#default_config_before}" -ne "${#default_config_after}" ]] ||
-    [[ "${#autostart_before}" -ne "${#autostart_after}" ]] ||
-    [[ "${#linux_autostart_before}" -ne "${#linux_autostart_after}" ]]; then
+    [[ "${#autostart_before}" -ne "${#autostart_after}" ]]; then
     echo "Error: Activity Recorder replacements are not byte-for-byte equal in length" >&2
     exit 1
 fi
@@ -62,12 +67,29 @@ count_autostart_marker() {
         "$APP_ASAR"
 }
 
+count_regex_marker() {
+    local marker="$1"
+
+    REGEX_MARKER="$marker" \
+    LC_ALL=C perl -0ne '
+        BEGIN {
+            $marker = $ENV{REGEX_MARKER};
+        }
+        while (/$marker/g) {
+            $count++;
+        }
+        END {
+            print $count || 0;
+        }' \
+        "$APP_ASAR"
+}
+
 default_config_before_count="$(count_literal_marker "$default_config_before")"
 default_config_after_count="$(count_literal_marker "$default_config_after")"
 autostart_before_count="$(count_autostart_marker "$autostart_before")"
 autostart_after_count="$(count_autostart_marker "$autostart_after")"
-linux_autostart_before_count="$(count_literal_marker "$linux_autostart_before")"
-linux_autostart_after_count="$(count_literal_marker "$linux_autostart_after")"
+linux_autostart_before_count="$(count_regex_marker "$linux_autostart_before")"
+linux_autostart_after_count="$(count_regex_marker "$linux_autostart_after")"
 
 if [[ "$default_config_before_count" -eq 0 ]] && [[ "$default_config_after_count" -eq 1 ]] &&
     { [[ "$autostart_before_count" -eq 0 ]] && [[ "$autostart_after_count" -eq 1 ]] &&
@@ -115,15 +137,15 @@ LC_ALL=C perl -0pi \
         s/\Q$default_config_before\E/$default_config_after/g;
         $autostart_prefix = qr/(initializeActivityRecorder\(\)\{try\{const e=[A-Za-z_\$][A-Za-z0-9_\$]*\.getSettings\(\),t=e\?JSON\.parse\(e\.settingsData\):\{\},n=t\?\.activityRecorder;)/;
         s/($autostart_prefix)\Q$autostart_before\E/$1$autostart_after/g;
-        s/\Q$linux_autostart_before\E/$linux_autostart_after/g;' \
+        s/$linux_autostart_before/"linux"===$1?!!$2?.enabled   :!($2&&!1===$2.enabled)/g;' \
         "$APP_ASAR"
 
 default_config_before_count="$(count_literal_marker "$default_config_before")"
 default_config_after_count="$(count_literal_marker "$default_config_after")"
 autostart_before_count="$(count_autostart_marker "$autostart_before")"
 autostart_after_count="$(count_autostart_marker "$autostart_after")"
-linux_autostart_before_count="$(count_literal_marker "$linux_autostart_before")"
-linux_autostart_after_count="$(count_literal_marker "$linux_autostart_after")"
+linux_autostart_before_count="$(count_regex_marker "$linux_autostart_before")"
+linux_autostart_after_count="$(count_regex_marker "$linux_autostart_after")"
 
 if [[ "$default_config_before_count" -ne 0 ]]; then
     echo "Error: Activity Recorder default config marker was not fully patched" >&2
