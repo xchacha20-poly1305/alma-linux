@@ -121,6 +121,7 @@ updaterCacheDirName: alma-updater
    - 为每个发布包生成 `.blockmap` 文件
    - 生成 `latest-linux.yml` 和 `system-linux.yml` 更新清单（构建了 aarch64 包时还会生成对应的 `-arm64` 清单）
 4. **发布** - 创建 GitHub Release 并上传所有包、blockmap 和更新清单
+   - 若要重新构建一个已经发布过的版本（例如打包逻辑变更后），手动运行 workflow 并勾选 `force_rebuild`，它会删除已有的 Release 和 tag，再用新构建重新创建
 5. **保留策略** - 仅保留最近 50 个版本的可下载发布内容。更早的 GitHub Release 仍会保留说明，但会删除包文件、blockmap 和更新清单。
 
 ### 可重复构建
