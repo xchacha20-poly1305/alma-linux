@@ -107,25 +107,52 @@ EOF
 # Create output directory
 mkdir -p dist
 
-PACMAN_FILE="dist/alma-${VERSION}-1-x86_64.pkg.tar.zst"
-SYSTEM_RPM_FILE="dist/alma-system-${VERSION}-1.x86_64.rpm"
-SYSTEM_PACMAN_FILE="dist/alma-system-${VERSION}-1-x86_64.pkg.tar.zst"
+# electron-updater picks the Linux channel file by process.arch:
+#   x64   -> <channel>-linux.yml
+#   arm64 -> <channel>-linux-arm64.yml
+# so each package architecture gets its own manifest pair. Only architectures
+# that were actually built (their standalone package exists in dist/) are
+# emitted, which keeps amd64-only releases unchanged when upstream has not
+# published an arm64 build for a version.
+write_arch_manifests() {
+    local arch="$1"
+    local suffix="$2"
+    local latest_file="dist/latest-linux${suffix}.yml"
+    local system_file="dist/system-linux${suffix}.yml"
 
-write_manifest_header dist/latest-linux.yml
-add_package_file dist/latest-linux.yml "$PACMAN_FILE" standalone pacman x86_64
-add_package_file dist/latest-linux.yml "$SYSTEM_RPM_FILE" system rpm x86_64
-add_package_file dist/latest-linux.yml "$SYSTEM_PACMAN_FILE" system pacman x86_64
-write_manifest_footer dist/latest-linux.yml "$PACMAN_FILE" "  - Standalone packages include the full Electron runtime
+    local pacman_file="dist/alma-${VERSION}-1-${arch}.pkg.tar.zst"
+    local system_rpm_file="dist/alma-system-${VERSION}-1.${arch}.rpm"
+    local system_pacman_file="dist/alma-system-${VERSION}-1-${arch}.pkg.tar.zst"
+
+    if [[ ! -f "$pacman_file" ]]; then
+        echo "Skipping ${arch}: no packages found in dist/"
+        return 0
+    fi
+
+    write_manifest_header "$latest_file"
+    add_package_file "$latest_file" "$pacman_file" standalone pacman "$arch"
+    add_package_file "$latest_file" "$system_rpm_file" system rpm "$arch"
+    add_package_file "$latest_file" "$system_pacman_file" system pacman "$arch"
+    write_manifest_footer "$latest_file" "$pacman_file" "  - Standalone packages include the full Electron runtime
   - System packages require a matching system Electron runtime
-  - System packages use the separate system-linux.yml update channel"
+  - System packages use the separate $(basename "$system_file") update channel"
 
-write_manifest_header dist/system-linux.yml
-add_package_file dist/system-linux.yml "$SYSTEM_RPM_FILE" system rpm x86_64
-add_package_file dist/system-linux.yml "$SYSTEM_PACMAN_FILE" system pacman x86_64
-write_manifest_footer dist/system-linux.yml "$SYSTEM_RPM_FILE" "  - System packages require a matching system Electron runtime
+    write_manifest_header "$system_file"
+    add_package_file "$system_file" "$system_rpm_file" system rpm "$arch"
+    add_package_file "$system_file" "$system_pacman_file" system pacman "$arch"
+    write_manifest_footer "$system_file" "$system_rpm_file" "  - System packages require a matching system Electron runtime
   - This manifest is used only by packages with channel: system"
 
-echo "✓ Generated: dist/latest-linux.yml"
-cat dist/latest-linux.yml
-echo "✓ Generated: dist/system-linux.yml"
-cat dist/system-linux.yml
+    echo "✓ Generated: $latest_file"
+    cat "$latest_file"
+    echo "✓ Generated: $system_file"
+    cat "$system_file"
+}
+
+write_arch_manifests x86_64 ""
+write_arch_manifests aarch64 "-arm64"
+
+if [[ ! -f dist/latest-linux.yml && ! -f dist/latest-linux-arm64.yml ]]; then
+    echo "Error: no packages found in dist/ for version $VERSION" >&2
+    exit 1
+fi

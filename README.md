@@ -14,6 +14,11 @@ Package variants:
 - **Standalone** - Includes complete Electron runtime, ready to use out of the box
 - **System** - Available for RPM and Pacman only. Uses a distribution-provided Electron runtime, and the launcher rejects executables whose major version does not match Alma's required Electron major.
 
+Architectures:
+
+- **x86_64** - Built from the upstream `amd64` DEB
+- **aarch64** (arm64) - Built from the upstream `arm64` DEB whenever upstream publishes one for the same version. Replace `x86_64` with `aarch64` in the file names below (`alma-VERSION-1-aarch64.pkg.tar.zst`, `alma-system-VERSION-1.aarch64.rpm`).
+
 ## Installation
 
 ### Arch Linux
@@ -86,6 +91,8 @@ repo: alma-linux
 
 System packages also set `channel: system`, so electron-updater reads `system-linux.yml` and downloads `alma-system-*` RPM/Pacman updates instead of the standalone packages.
 
+On aarch64, electron-updater automatically requests the `-arm64` variants (`latest-linux-arm64.yml` / `system-linux-arm64.yml`), which list only the aarch64 packages. No configuration difference is needed between architectures.
+
 To switch back to the official update source, manually edit the configuration file:
 - **Standalone version**: `/opt/Alma/resources/app-update.yml`
 - **System version**: `/usr/lib/alma/resources/app-update.yml`
@@ -97,13 +104,13 @@ url: https://updates.alma.now/
 updaterCacheDirName: alma-updater
 ```
 
-**Technical Details**: Alma uses electron-updater 6.6.2, which fully supports GitHub Releases as an update source. The `latest-linux.yml` and `system-linux.yml` manifests contain version information, file lists, SHA512 checksums, and blockmap sizes to ensure secure and reliable updates. Each published package has a matching `.blockmap` asset for differential update metadata.
+**Technical Details**: Alma uses electron-updater 6.6.2, which fully supports GitHub Releases as an update source. The `latest-linux.yml` / `system-linux.yml` (x86_64) and `latest-linux-arm64.yml` / `system-linux-arm64.yml` (aarch64) manifests contain version information, file lists, SHA512 checksums, and blockmap sizes to ensure secure and reliable updates. Each published package has a matching `.blockmap` asset for differential update metadata.
 
 ## How It Works
 
 1. **Daily Check** - GitHub Actions runs automatically every day at UTC 02:00
-2. **Version Detection** - Fetches `https://updates.alma.now/latest-linux.yml` and parses version number
-3. **Build Packages** - If a new version is found:
+2. **Version Detection** - Fetches `https://updates.alma.now/latest-linux.yml` and parses version number, then checks whether `latest-linux-arm64.yml` reports the same version
+3. **Build Packages** - If a new version is found (for amd64, and for arm64 when upstream has published it):
    - Downloads upstream DEB package
    - Verifies SHA512 checksum
    - Extracts application contents and metadata
@@ -112,7 +119,7 @@ updaterCacheDirName: alma-updater
    - Repackages into system RPM and Pacman formats using nFPM 2.47.0
    - Builds system RPM/Pacman versions (contains only app resources and uses matching system Electron runtime)
    - Generates `.blockmap` files for every release package
-   - Generates `latest-linux.yml` and `system-linux.yml` update manifests
+   - Generates `latest-linux.yml` and `system-linux.yml` update manifests (plus the `-arm64` pair when aarch64 packages were built)
 4. **Release** - Creates GitHub Release and uploads all packages, blockmaps, and update manifests
 5. **Retention** - Keeps downloadable assets for the newest 50 releases. Older GitHub Releases stay published with their notes; package files, blockmaps, and update manifests are deleted.
 

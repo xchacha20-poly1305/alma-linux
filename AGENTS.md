@@ -6,13 +6,15 @@ This file applies to the whole repository.
 
 This repository repackages upstream Alma Linux releases. The normal pipeline is:
 
-1. Fetch upstream `latest-linux.yml`.
-2. Download and checksum the upstream amd64 DEB.
+1. Fetch upstream `latest-linux.yml` (and `latest-linux-arm64.yml`; arm64 is built only when it reports the same version).
+2. Download and checksum the upstream amd64 DEB (and the arm64 DEB when available).
 3. Run `scripts/extract-deb.sh` to create `extracted/`.
 4. Run `scripts/apply-patches.sh` against the extracted Alma app.
 5. Run `scripts/determine-electron.sh`.
 6. Run `scripts/build-packages.sh <version> <electron-major>`.
 7. Run `scripts/generate-latest-yml.sh` for release metadata.
+
+Steps 3-6 run once per architecture against the same `extracted/` directory; `scripts/build-packages.sh` derives `x86_64` / `aarch64` from `extracted/DEBIAN/control`. Step 7 emits `latest-linux.yml` / `system-linux.yml` for x86_64 and the `-arm64` pair for aarch64, based on which packages exist in `dist/`.
 
 Prefer proving changes against the real upstream DEB whenever the failure came from an upstream bundle change. Synthetic fixtures are useful guardrails, but they do not replace a real `app.asar` preflight.
 
@@ -45,6 +47,7 @@ Prefer proving changes against the real upstream DEB whenever the failure came f
 - CI installs `nfpm` and generic archive tools. It does not need `rpm` or `makepkg` for package creation.
 - Standalone outputs are RPM, Pacman, and DEB.
 - System Electron outputs are RPM and Pacman only. Do not add a system-Electron DEB unless the packaging model is intentionally redesigned.
+- Every output is built per architecture (x86_64 from the amd64 DEB, aarch64 from the arm64 DEB). electron-updater on arm64 requests `latest-linux-arm64.yml` / `system-linux-arm64.yml`, so keep the per-arch manifests separate; never list aarch64 files in the x86_64 manifests or vice versa.
 - System packages must not assume a random system Electron is acceptable. `metadata/alma-wrapper.sh` must only run an Electron executable whose `--version` reports the required major version.
 - For Arch packages with `nfpm`, keep explicit top-level `contents` entries. Do not map the entire tree to `dst: /`.
 
