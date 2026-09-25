@@ -34,62 +34,41 @@ if [[ "${#default_config_before}" -ne "${#default_config_after}" ]] ||
     exit 1
 fi
 
-count_literal_marker() {
-    local marker="$1"
-
-    LITERAL_MARKER="$marker" \
+# Count every marker in one pass over app.asar; each pass takes several
+# seconds on the real archive.
+collect_marker_counts() {
+    DEFAULT_CONFIG_BEFORE="$default_config_before" \
+    DEFAULT_CONFIG_AFTER="$default_config_after" \
+    AUTOSTART_BEFORE="$autostart_before" \
+    AUTOSTART_AFTER="$autostart_after" \
+    LINUX_AUTOSTART_BEFORE="$linux_autostart_before" \
+    LINUX_AUTOSTART_AFTER="$linux_autostart_after" \
     LC_ALL=C perl -0ne '
         BEGIN {
-            $marker = $ENV{LITERAL_MARKER};
-        }
-        $count += () = /\Q$marker\E/g;
-        END {
-            print $count || 0;
-        }' \
-        "$APP_ASAR"
-}
-
-count_autostart_marker() {
-    local marker="$1"
-
-    AUTOSTART_MARKER="$marker" \
-    LC_ALL=C perl -0ne '
-        BEGIN {
-            $marker = $ENV{AUTOSTART_MARKER};
+            $default_config_before = $ENV{DEFAULT_CONFIG_BEFORE};
+            $default_config_after = $ENV{DEFAULT_CONFIG_AFTER};
+            $autostart_before = $ENV{AUTOSTART_BEFORE};
+            $autostart_after = $ENV{AUTOSTART_AFTER};
+            $linux_autostart_before = $ENV{LINUX_AUTOSTART_BEFORE};
+            $linux_autostart_after = $ENV{LINUX_AUTOSTART_AFTER};
             $prefix = qr/initializeActivityRecorder\(\)\{try\{const e=[A-Za-z_\$][A-Za-z0-9_\$]*\.getSettings\(\),t=e\?JSON\.parse\(e\.settingsData\):\{\},n=t\?\.activityRecorder;/;
         }
-        while (/$prefix\Q$marker\E/g) {
-            $count++;
-        }
+        $counts[0] += () = /\Q$default_config_before\E/g;
+        $counts[1] += () = /\Q$default_config_after\E/g;
+        $counts[2]++ while /$prefix\Q$autostart_before\E/g;
+        $counts[3]++ while /$prefix\Q$autostart_after\E/g;
+        $counts[4]++ while /$linux_autostart_before/g;
+        $counts[5]++ while /$linux_autostart_after/g;
         END {
-            print $count || 0;
+            print join " ", map { $counts[$_] || 0 } 0 .. 5;
         }' \
         "$APP_ASAR"
 }
 
-count_regex_marker() {
-    local marker="$1"
-
-    REGEX_MARKER="$marker" \
-    LC_ALL=C perl -0ne '
-        BEGIN {
-            $marker = $ENV{REGEX_MARKER};
-        }
-        while (/$marker/g) {
-            $count++;
-        }
-        END {
-            print $count || 0;
-        }' \
-        "$APP_ASAR"
-}
-
-default_config_before_count="$(count_literal_marker "$default_config_before")"
-default_config_after_count="$(count_literal_marker "$default_config_after")"
-autostart_before_count="$(count_autostart_marker "$autostart_before")"
-autostart_after_count="$(count_autostart_marker "$autostart_after")"
-linux_autostart_before_count="$(count_regex_marker "$linux_autostart_before")"
-linux_autostart_after_count="$(count_regex_marker "$linux_autostart_after")"
+read -r default_config_before_count default_config_after_count \
+    autostart_before_count autostart_after_count \
+    linux_autostart_before_count linux_autostart_after_count \
+    <<< "$(collect_marker_counts)"
 
 if [[ "$default_config_before_count" -eq 0 ]] && [[ "$default_config_after_count" -eq 1 ]] &&
     { [[ "$autostart_before_count" -eq 0 ]] && [[ "$autostart_after_count" -eq 1 ]] &&
@@ -140,12 +119,10 @@ LC_ALL=C perl -0pi \
         s/$linux_autostart_before/"linux"===$1?!!$2?.enabled   :!($2&&!1===$2.enabled)/g;' \
         "$APP_ASAR"
 
-default_config_before_count="$(count_literal_marker "$default_config_before")"
-default_config_after_count="$(count_literal_marker "$default_config_after")"
-autostart_before_count="$(count_autostart_marker "$autostart_before")"
-autostart_after_count="$(count_autostart_marker "$autostart_after")"
-linux_autostart_before_count="$(count_regex_marker "$linux_autostart_before")"
-linux_autostart_after_count="$(count_regex_marker "$linux_autostart_after")"
+read -r default_config_before_count default_config_after_count \
+    autostart_before_count autostart_after_count \
+    linux_autostart_before_count linux_autostart_after_count \
+    <<< "$(collect_marker_counts)"
 
 if [[ "$default_config_before_count" -ne 0 ]]; then
     echo "Error: Activity Recorder default config marker was not fully patched" >&2
