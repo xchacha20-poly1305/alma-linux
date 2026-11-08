@@ -1,5 +1,7 @@
 # Alma Linux Packages
 
+> **本仓库已存档。** 上游 [Alma](https://alma.now) 现已提供丰富的 Linux 包装，且不再使用 Electron，本项目停止维护。
+
 自动打包工具，用于为 [Alma](https://alma.now) 构建多种 Linux 包格式。
 
 ## 概述

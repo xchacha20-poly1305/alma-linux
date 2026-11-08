@@ -1,5 +1,7 @@
 # Alma Linux Packages
 
+> **This repository is archived.** Upstream [Alma](https://alma.now) now ships a full set of Linux packages, and Alma no longer uses Electron, so this project is no longer maintained.
+
 Automated packaging tool to build multiple Linux package formats for [Alma](https://alma.now).
 
 ## Overview
